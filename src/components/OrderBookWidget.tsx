@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { subscribeToOrderBook, formatPrice, type OrderBook, type OrderBookEntry } from "@/lib/binanceApi";
+import { useState, useEffect, useRef } from "react";
+import { getOrderBook, formatPrice, type OrderBook, type OrderBookEntry } from "@/lib/binanceApi";
 import { useLanguage } from "@/i18n";
 
 interface OrderBookProps {
@@ -7,28 +7,47 @@ interface OrderBookProps {
 }
 
 const POPULAR_PAIRS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT"];
+const POLL_INTERVAL_MS = 2000; // Update every 2 seconds
 
 export function OrderBookWidget({ defaultSymbol = "BTCUSDT" }: OrderBookProps) {
     const { language } = useLanguage();
     const [symbol, setSymbol] = useState(defaultSymbol);
     const [orderBook, setOrderBook] = useState<OrderBook | null>(null);
     const [isConnected, setIsConnected] = useState(false);
-
-    const handleOrderBookUpdate = useCallback((data: OrderBook) => {
-        setOrderBook(data);
-        setIsConnected(true);
-    }, []);
+    const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+    const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
         setIsConnected(false);
         setOrderBook(null);
 
-        const unsubscribe = subscribeToOrderBook(symbol, handleOrderBookUpdate, "10");
+        const fetchOrderBook = async () => {
+            try {
+                const data = await getOrderBook(symbol, 10);
+                if (data) {
+                    setOrderBook(data);
+                    setIsConnected(true);
+                    setLastUpdate(new Date());
+                }
+            } catch (error) {
+                console.error("Error fetching order book:", error);
+                setIsConnected(false);
+            }
+        };
+
+        // Fetch immediately
+        fetchOrderBook();
+
+        // Then poll every POLL_INTERVAL_MS
+        intervalRef.current = setInterval(fetchOrderBook, POLL_INTERVAL_MS);
 
         return () => {
-            unsubscribe();
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+                intervalRef.current = null;
+            }
         };
-    }, [symbol, handleOrderBookUpdate]);
+    }, [symbol]);
 
     const maxQuantity = orderBook
         ? Math.max(
@@ -65,8 +84,8 @@ export function OrderBookWidget({ defaultSymbol = "BTCUSDT" }: OrderBookProps) {
                             {texts.title}
                         </h2>
                         <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-mono ${isConnected
-                                ? "bg-green-500/10 text-green-400 border border-green-500/30"
-                                : "bg-yellow-500/10 text-yellow-400 border border-yellow-500/30"
+                            ? "bg-green-500/10 text-green-400 border border-green-500/30"
+                            : "bg-yellow-500/10 text-yellow-400 border border-yellow-500/30"
                             }`}>
                             <span className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-400 animate-pulse" : "bg-yellow-400"}`} />
                             {isConnected ? texts.live : texts.connecting}
@@ -80,8 +99,8 @@ export function OrderBookWidget({ defaultSymbol = "BTCUSDT" }: OrderBookProps) {
                                 key={pair}
                                 onClick={() => setSymbol(pair)}
                                 className={`px-3 py-1.5 rounded-lg font-mono text-sm transition-all duration-200 ${symbol === pair
-                                        ? "bg-primary text-primary-foreground"
-                                        : "bg-card/50 text-muted-foreground hover:bg-card hover:text-foreground border border-border/50"
+                                    ? "bg-primary text-primary-foreground"
+                                    : "bg-card/50 text-muted-foreground hover:bg-card hover:text-foreground border border-border/50"
                                     }`}
                             >
                                 {pair.replace("USDT", "")}
