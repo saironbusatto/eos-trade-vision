@@ -55,6 +55,19 @@ export interface ExchangeInfo {
     }>;
 }
 
+export interface OrderBookEntry {
+    price: string;
+    quantity: string;
+}
+
+export interface OrderBook {
+    lastUpdateId: number;
+    bids: OrderBookEntry[]; // [price, quantity]
+    asks: OrderBookEntry[]; // [price, quantity]
+    symbol: string;
+    timestamp: number;
+}
+
 // Get current price for a symbol
 export async function getSymbolPrice(symbol: string): Promise<SymbolPrice | null> {
     try {
@@ -126,6 +139,90 @@ export async function getExchangeInfo(): Promise<ExchangeInfo["symbols"]> {
         console.error("Error fetching exchange info:", error);
         return [];
     }
+}
+
+// Get order book (depth) for a symbol
+export async function getOrderBook(
+    symbol: string,
+    limit: number = 20 // Valid values: 5, 10, 20, 50, 100, 500, 1000, 5000
+): Promise<OrderBook | null> {
+    try {
+        const resolvedSymbol = resolveSymbol(symbol);
+        const response = await fetch(
+            `${BINANCE_API_BASE}/depth?symbol=${resolvedSymbol}&limit=${limit}`
+        );
+        if (!response.ok) return null;
+
+        const data = await response.json();
+
+        return {
+            lastUpdateId: data.lastUpdateId,
+            bids: data.bids.map((b: string[]) => ({ price: b[0], quantity: b[1] })),
+            asks: data.asks.map((a: string[]) => ({ price: a[0], quantity: a[1] })),
+            symbol: resolvedSymbol,
+            timestamp: Date.now(),
+        };
+    } catch (error) {
+        console.error("Error fetching order book:", error);
+        return null;
+    }
+}
+
+// Get order book with WebSocket for real-time updates
+export function subscribeToOrderBook(
+    symbol: string,
+    onUpdate: (orderBook: OrderBook) => void,
+    depth: "5" | "10" | "20" = "20"
+): () => void {
+    const resolvedSymbol = resolveSymbol(symbol).toLowerCase();
+    const wsUrl = `wss://stream.binance.com:9443/ws/${resolvedSymbol}@depth${depth}@100ms`;
+
+    let ws: WebSocket | null = null;
+    let lastOrderBook: OrderBook | null = null;
+
+    // First, get initial snapshot
+    getOrderBook(symbol, parseInt(depth)).then((initial) => {
+        if (initial) {
+            lastOrderBook = initial;
+            onUpdate(initial);
+        }
+    });
+
+    // Then connect to WebSocket for updates
+    ws = new WebSocket(wsUrl);
+
+    ws.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+
+            // Update order book with diff
+            if (lastOrderBook) {
+                const updatedOrderBook: OrderBook = {
+                    lastUpdateId: data.u,
+                    bids: data.b.map((b: string[]) => ({ price: b[0], quantity: b[1] })),
+                    asks: data.a.map((a: string[]) => ({ price: a[0], quantity: a[1] })),
+                    symbol: resolvedSymbol.toUpperCase(),
+                    timestamp: Date.now(),
+                };
+                lastOrderBook = updatedOrderBook;
+                onUpdate(updatedOrderBook);
+            }
+        } catch (error) {
+            console.error("Error parsing order book update:", error);
+        }
+    };
+
+    ws.onerror = (error) => {
+        console.error("WebSocket error:", error);
+    };
+
+    // Return cleanup function
+    return () => {
+        if (ws) {
+            ws.close();
+            ws = null;
+        }
+    };
 }
 
 // Find symbol from user query (e.g., "bitcoin" -> "BTCUSDT")
