@@ -29,7 +29,7 @@ const FeatureCards = () => {
             return (
               <div
                 key={index}
-                className="group relative rounded-2xl border border-border/50 bg-card/50 backdrop-blur-sm p-8 transition-all duration-500 hover:border-primary/50 hover:bg-card"
+                className="card-premium group p-8"
                 style={{ animationDelay: `${index * 0.1}s` }}
               >
                 {/* Icon */}
@@ -66,11 +66,6 @@ const FeatureCards = () => {
                     </li>
                   ))}
                 </ul>
-
-                {/* Hover Glow Effect */}
-                <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none">
-                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-primary/5 to-transparent" />
-                </div>
               </div>
             );
           })}

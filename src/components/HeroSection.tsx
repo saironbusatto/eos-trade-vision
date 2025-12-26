@@ -64,28 +64,28 @@ const HeroSection = () => {
 
           {/* CTAs */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-in-delay-3">
-            <Button variant="hero" size="xl" className="group">
+            <Button variant="hero" size="xl" className="btn-primary group">
               {t.hero.ctaPrimary}
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </Button>
-            <Button variant="heroOutline" size="xl">
+            <Button variant="heroOutline" size="xl" className="btn-secondary">
               {t.hero.ctaSecondary}
             </Button>
           </div>
 
-          {/* Stats */}
+          {/* Stats - Redesigned Metrics */}
           <div className="grid grid-cols-3 gap-8 mt-16 pt-16 border-t border-border/30 animate-fade-in-delay-3">
-            <div className="text-center">
-              <div className="text-3xl md:text-4xl font-bold text-foreground font-mono">&lt;1ms</div>
-              <div className="text-sm text-muted-foreground mt-1">{t.hero.stat1Label}</div>
+            <div className="metric-box text-center md:text-left">
+              <div className="metric-value">&lt;1ms</div>
+              <div className="metric-label">{t.hero.stat1Label}</div>
             </div>
-            <div className="text-center">
-              <div className="text-3xl md:text-4xl font-bold text-foreground font-mono">99.97%</div>
-              <div className="text-sm text-muted-foreground mt-1">{t.hero.stat2Label}</div>
+            <div className="metric-box text-center md:text-left">
+              <div className="metric-value">99.97%</div>
+              <div className="metric-label">{t.hero.stat2Label}</div>
             </div>
-            <div className="text-center">
-              <div className="text-3xl md:text-4xl font-bold text-foreground font-mono">24/7</div>
-              <div className="text-sm text-muted-foreground mt-1">{t.hero.stat3Label}</div>
+            <div className="metric-box text-center md:text-left">
+              <div className="metric-value">24/7</div>
+              <div className="metric-label">{t.hero.stat3Label}</div>
             </div>
           </div>
         </div>
