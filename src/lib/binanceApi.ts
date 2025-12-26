@@ -178,12 +178,11 @@ export function subscribeToOrderBook(
     const wsUrl = `wss://stream.binance.com:9443/ws/${resolvedSymbol}@depth${depth}@100ms`;
 
     let ws: WebSocket | null = null;
-    let lastOrderBook: OrderBook | null = null;
+    let isConnected = false;
 
     // First, get initial snapshot
     getOrderBook(symbol, parseInt(depth)).then((initial) => {
         if (initial) {
-            lastOrderBook = initial;
             onUpdate(initial);
         }
     });
@@ -191,20 +190,24 @@ export function subscribeToOrderBook(
     // Then connect to WebSocket for updates
     ws = new WebSocket(wsUrl);
 
+    ws.onopen = () => {
+        isConnected = true;
+        console.log(`OrderBook WebSocket connected for ${resolvedSymbol}`);
+    };
+
     ws.onmessage = (event) => {
         try {
             const data = JSON.parse(event.data);
 
-            // Update order book with diff
-            if (lastOrderBook) {
+            // Binance depth stream format: { b: [[price, qty], ...], a: [[price, qty], ...] }
+            if (data.b && data.a && Array.isArray(data.b) && Array.isArray(data.a)) {
                 const updatedOrderBook: OrderBook = {
-                    lastUpdateId: data.u,
+                    lastUpdateId: data.u || data.U || Date.now(),
                     bids: data.b.map((b: string[]) => ({ price: b[0], quantity: b[1] })),
                     asks: data.a.map((a: string[]) => ({ price: a[0], quantity: a[1] })),
                     symbol: resolvedSymbol.toUpperCase(),
                     timestamp: Date.now(),
                 };
-                lastOrderBook = updatedOrderBook;
                 onUpdate(updatedOrderBook);
             }
         } catch (error) {
@@ -214,6 +217,11 @@ export function subscribeToOrderBook(
 
     ws.onerror = (error) => {
         console.error("WebSocket error:", error);
+    };
+
+    ws.onclose = () => {
+        isConnected = false;
+        console.log(`OrderBook WebSocket closed for ${resolvedSymbol}`);
     };
 
     // Return cleanup function
