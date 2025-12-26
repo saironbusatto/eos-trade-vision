@@ -23,7 +23,7 @@ const Footer = () => {
               <span className="font-bold text-foreground">EOS</span>
             </div>
             <span className="text-xs text-muted-foreground font-mono">
-              A Product of s-iron.tech
+              Um Produto s-iron.tech
             </span>
           </div>
 
@@ -45,14 +45,14 @@ const Footer = () => {
           <div className="flex flex-col items-center md:items-end gap-2">
             <div className="flex items-center gap-4 text-sm">
               <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
-                Risk Disclosure
+                Divulgação de Riscos
               </a>
               <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
-                Privacy Policy
+                Política de Privacidade
               </a>
             </div>
             <span className="text-xs text-muted-foreground">
-              © {new Date().getFullYear()} s-iron.tech. All rights reserved.
+              © {new Date().getFullYear()} s-iron.tech. Todos os direitos reservados.
             </span>
           </div>
         </div>
@@ -60,9 +60,9 @@ const Footer = () => {
         {/* Risk Warning */}
         <div className="mt-8 pt-8 border-t border-border/30">
           <p className="text-xs text-muted-foreground text-center max-w-3xl mx-auto leading-relaxed">
-            <strong className="text-foreground/70">Risk Disclosure:</strong> Trading financial instruments carries a high level of risk and may not be suitable for all investors. 
-            Past performance is not indicative of future results. EOS provides signals for informational purposes only and does not constitute financial advice. 
-            You should carefully consider your investment objectives and risk tolerance before using algorithmic trading systems.
+            <strong className="text-foreground/70">Divulgação de Riscos:</strong> Negociar instrumentos financeiros envolve alto nível de risco e pode não ser adequado para todos os investidores.
+            Desempenho passado não é indicativo de resultados futuros. EOS fornece sinais apenas para fins informativos e não constitui aconselhamento financeiro.
+            Você deve considerar cuidadosamente seus objetivos de investimento e tolerância ao risco antes de usar sistemas de trading algorítmico.
           </p>
         </div>
       </div>

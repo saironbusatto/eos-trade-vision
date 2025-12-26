@@ -6,10 +6,10 @@ const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const navLinks = [
-    { label: "Features", href: "#features" },
-    { label: "Technical Specs", href: "#specs" },
+    { label: "Recursos", href: "#features" },
+    { label: "Especificações", href: "#specs" },
     { label: "API", href: "#api" },
-    { label: "Documentation", href: "#docs" },
+    { label: "Documentação", href: "#docs" },
   ];
 
   return (
@@ -46,7 +46,7 @@ const Header = () => {
           {/* CTA Button */}
           <div className="hidden md:block">
             <Button variant="hero" size="sm">
-              Get Started
+              Começar
             </Button>
           </div>
 
@@ -74,7 +74,7 @@ const Header = () => {
                 </a>
               ))}
               <Button variant="hero" size="sm" className="mt-2">
-                Get Started
+                Começar
               </Button>
             </div>
           </nav>

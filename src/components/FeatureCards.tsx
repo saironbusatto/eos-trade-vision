@@ -3,38 +3,38 @@ import { Eye, Cpu, Shield } from "lucide-react";
 const features = [
   {
     icon: Eye,
-    title: "The Eye",
-    subtitle: "Market Surveillance",
+    title: "O Olho",
+    subtitle: "Vigilância de Mercado",
     description:
-      "Continuous scanning across multiple timeframes with advanced pattern recognition. Our proprietary signal-to-noise ratio algorithms filter market chaos into actionable intelligence.",
+      "Varredura contínua em múltiplos timeframes com reconhecimento avançado de padrões. Nossos algoritmos proprietários de relação sinal-ruído filtram o caos do mercado em inteligência acionável.",
     specs: [
-      "Multi-timeframe analysis",
-      "Pattern recognition engine",
-      "Real-time signal detection",
+      "Análise multi-timeframe",
+      "Motor de reconhecimento de padrões",
+      "Detecção de sinais em tempo real",
     ],
   },
   {
     icon: Cpu,
-    title: "The Engine",
-    subtitle: "Execution Core",
+    title: "O Motor",
+    subtitle: "Núcleo de Execução",
     description:
-      "Low-latency infrastructure engineered for reliability. Sub-millisecond signal propagation ensures you receive entry and exit points before market conditions shift.",
+      "Infraestrutura de baixa latência projetada para confiabilidade. Propagação de sinais sub-milissegundo garante que você receba pontos de entrada e saída antes que as condições de mercado mudem.",
     specs: [
-      "Sub-millisecond latency",
-      "Redundant infrastructure",
-      "99.97% uptime guarantee",
+      "Latência sub-milissegundo",
+      "Infraestrutura redundante",
+      "Garantia de 99.97% uptime",
     ],
   },
   {
     icon: Shield,
-    title: "The Ecosystem",
-    subtitle: "s-iron.tech Stack",
+    title: "O Ecossistema",
+    subtitle: "Stack s-iron.tech",
     description:
-      "Seamlessly integrated within the s-iron.tech infrastructure. Enterprise-grade security, encrypted communications, and full API access for custom implementations.",
+      "Integrado perfeitamente na infraestrutura s-iron.tech. Segurança de nível empresarial, comunicações criptografadas e acesso completo à API para implementações personalizadas.",
     specs: [
-      "End-to-end encryption",
-      "RESTful & WebSocket APIs",
-      "Custom webhook support",
+      "Criptografia ponta a ponta",
+      "APIs RESTful & WebSocket",
+      "Suporte a webhooks customizados",
     ],
   },
 ];
@@ -44,15 +44,15 @@ const FeatureCards = () => {
     <section id="features" className="relative py-32 overflow-hidden">
       {/* Background */}
       <div className="absolute inset-0 bg-gradient-to-b from-background via-secondary/20 to-background" />
-      
+
       <div className="container relative z-10 mx-auto px-6">
         {/* Section Header */}
         <div className="text-center mb-16">
           <h2 className="text-3xl md:text-5xl font-bold text-foreground mb-4">
-            Technical Architecture
+            Arquitetura Técnica
           </h2>
           <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-            Three pillars of precision engineering powering your trading decisions.
+            Três pilares de engenharia de precisão potencializando suas decisões de trading.
           </p>
         </div>
 

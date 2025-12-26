@@ -7,9 +7,9 @@ const HeroSection = () => {
       {/* Background Effects */}
       <div className="absolute inset-0 bg-radial-glow opacity-60" />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full bg-primary/5 blur-3xl animate-pulse-glow" />
-      
+
       {/* Grid Pattern */}
-      <div 
+      <div
         className="absolute inset-0 opacity-[0.02]"
         style={{
           backgroundImage: `linear-gradient(hsl(var(--foreground)) 1px, transparent 1px),
@@ -25,12 +25,12 @@ const HeroSection = () => {
           <div className="absolute inset-0 rounded-full border border-primary/20 animate-spin" style={{ animationDuration: '60s' }} />
           <div className="absolute inset-8 rounded-full border border-primary/15 animate-spin" style={{ animationDuration: '45s', animationDirection: 'reverse' }} />
           <div className="absolute inset-16 rounded-full border border-primary/10 animate-spin" style={{ animationDuration: '30s' }} />
-          
+
           {/* Core Glow */}
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="w-24 h-32 md:w-32 md:h-44 rounded-[50%] bg-gradient-to-b from-primary via-accent to-primary/50 opacity-40 blur-xl animate-pulse-glow" />
           </div>
-          
+
           {/* Slit */}
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="w-2 h-20 md:w-3 md:h-28 bg-gradient-to-b from-transparent via-foreground to-transparent rounded-full animate-scan" />
@@ -44,31 +44,31 @@ const HeroSection = () => {
           {/* Badge */}
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-primary/30 bg-primary/5 mb-8 animate-fade-in">
             <Zap className="w-4 h-4 text-primary" />
-            <span className="text-sm font-mono text-primary">ALGORITHMIC SIGNAL GENERATION</span>
+            <span className="text-sm font-mono text-primary">GERAÇÃO DE SINAIS ALGORÍTMICOS</span>
           </div>
 
           {/* Headline */}
           <h1 className="text-4xl md:text-6xl lg:text-7xl font-extrabold tracking-tight mb-6 animate-fade-in-delay-1">
-            <span className="text-foreground">One Eye.</span>
+            <span className="text-foreground">Um Olho.</span>
             <br />
-            <span className="text-gradient">Infinite Precision.</span>
+            <span className="text-gradient">Precisão Infinita.</span>
           </h1>
 
           {/* Sub-headline */}
           <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed animate-fade-in-delay-2">
-            EOS processes market noise with sub-millisecond latency, delivering 
-            high-fidelity entry and exit signals through our proprietary algorithmic engine. 
-            Built for traders who demand precision.
+            EOS processa o ruído do mercado com latência sub-milissegundo, entregando
+            sinais de entrada e saída de alta fidelidade através do nosso motor algorítmico proprietário.
+            Construído para traders que exigem precisão.
           </p>
 
           {/* CTAs */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-in-delay-3">
             <Button variant="hero" size="xl" className="group">
-              Connect to API
+              Conectar à API
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </Button>
             <Button variant="heroOutline" size="xl">
-              View Documentation
+              Ver Documentação
             </Button>
           </div>
 
@@ -76,15 +76,15 @@ const HeroSection = () => {
           <div className="grid grid-cols-3 gap-8 mt-16 pt-16 border-t border-border/30 animate-fade-in-delay-3">
             <div className="text-center">
               <div className="text-3xl md:text-4xl font-bold text-foreground font-mono">&lt;1ms</div>
-              <div className="text-sm text-muted-foreground mt-1">Signal Latency</div>
+              <div className="text-sm text-muted-foreground mt-1">Latência de Sinal</div>
             </div>
             <div className="text-center">
               <div className="text-3xl md:text-4xl font-bold text-foreground font-mono">99.97%</div>
-              <div className="text-sm text-muted-foreground mt-1">Uptime SLA</div>
+              <div className="text-sm text-muted-foreground mt-1">SLA de Uptime</div>
             </div>
             <div className="text-center">
               <div className="text-3xl md:text-4xl font-bold text-foreground font-mono">24/7</div>
-              <div className="text-sm text-muted-foreground mt-1">Market Coverage</div>
+              <div className="text-sm text-muted-foreground mt-1">Cobertura de Mercado</div>
             </div>
           </div>
         </div>
