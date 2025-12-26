@@ -1,6 +1,7 @@
 import Header from "@/components/Header";
 import HeroSection from "@/components/HeroSection";
 import FeatureCards from "@/components/FeatureCards";
+import { OrderBookWidget } from "@/components/OrderBookWidget";
 import Footer from "@/components/Footer";
 
 const Index = () => {
@@ -10,6 +11,7 @@ const Index = () => {
       <main>
         <HeroSection />
         <FeatureCards />
+        <OrderBookWidget />
       </main>
       <Footer />
     </div>
