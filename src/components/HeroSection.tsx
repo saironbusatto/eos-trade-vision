@@ -68,9 +68,6 @@ const HeroSection = () => {
               {t.hero.ctaPrimary}
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </Button>
-            <Button variant="heroOutline" size="xl" className="btn-secondary">
-              {t.hero.ctaSecondary}
-            </Button>
           </div>
 
           {/* Stats - Redesigned Metrics */}
