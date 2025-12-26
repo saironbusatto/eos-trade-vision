@@ -1,4 +1,5 @@
 // Load environment variables FIRST before anything else
+// CI/CD Test: Auto-deploy triggered at 2025-12-26 18:55
 import dotenv from "dotenv";
 dotenv.config();
 
