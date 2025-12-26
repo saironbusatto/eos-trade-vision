@@ -1,20 +1,25 @@
 import { useState, useRef, useEffect, FormEvent, KeyboardEvent } from "react";
 import { MessageCircle, X, Send, Loader2 } from "lucide-react";
 import { sendMessage, type ChatMessage } from "@/lib/geminiApi";
+import { useLanguage } from "@/i18n";
 import "./ChatWidget.css";
 
-const INITIAL_MESSAGE: ChatMessage = {
-    role: "assistant",
-    content: "👋 Olá! Sou o EOS Assistant. Posso ajudar com informações sobre criptomoedas em tempo real.\n\nExperimente perguntar:\n• \"Qual o preço do Bitcoin?\"\n• \"Como está o Ethereum hoje?\"\n• \"Me fale sobre a Solana\"",
-};
-
 export function ChatWidget() {
+    const { t, language } = useLanguage();
     const [isOpen, setIsOpen] = useState(false);
-    const [messages, setMessages] = useState<ChatMessage[]>([INITIAL_MESSAGE]);
+    const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+
+    // Update initial message when language changes
+    useEffect(() => {
+        setMessages([{
+            role: "assistant",
+            content: t.chat.welcome,
+        }]);
+    }, [language, t.chat.welcome]);
 
     // Scroll to bottom when messages change
     useEffect(() => {
@@ -56,7 +61,7 @@ export function ChatWidget() {
             console.error("Error sending message:", error);
             setMessages((prev) => [
                 ...prev,
-                { role: "assistant", content: "❌ Erro ao processar sua mensagem. Tente novamente." },
+                { role: "assistant", content: t.chat.error },
             ]);
         } finally {
             setIsLoading(false);
@@ -81,14 +86,14 @@ export function ChatWidget() {
                             <MessageCircle size={18} />
                         </div>
                         <div>
-                            <h3 className="chat-title">EOS Assistant</h3>
-                            <span className="chat-subtitle">Powered by Gemini AI</span>
+                            <h3 className="chat-title">{t.chat.title}</h3>
+                            <span className="chat-subtitle">{t.chat.subtitle}</span>
                         </div>
                     </div>
                     <button
                         onClick={() => setIsOpen(false)}
                         className="chat-close-btn"
-                        aria-label="Fechar chat"
+                        aria-label="Close chat"
                     >
                         <X size={20} />
                     </button>
@@ -113,7 +118,7 @@ export function ChatWidget() {
                         <div className="chat-message chat-message-assistant">
                             <div className="chat-message-content chat-typing">
                                 <Loader2 className="animate-spin" size={16} />
-                                <span>Analisando...</span>
+                                <span>{t.chat.analyzing}</span>
                             </div>
                         </div>
                     )}
@@ -128,7 +133,7 @@ export function ChatWidget() {
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={handleKeyDown}
-                        placeholder="Pergunte sobre qualquer cripto..."
+                        placeholder={t.chat.placeholder}
                         className="chat-input"
                         disabled={isLoading}
                     />
@@ -136,7 +141,7 @@ export function ChatWidget() {
                         type="submit"
                         disabled={!input.trim() || isLoading}
                         className="chat-send-btn"
-                        aria-label="Enviar mensagem"
+                        aria-label="Send message"
                     >
                         <Send size={18} />
                     </button>
@@ -147,7 +152,7 @@ export function ChatWidget() {
             <button
                 onClick={() => setIsOpen(!isOpen)}
                 className={`chat-toggle-btn ${isOpen ? "chat-toggle-open" : ""}`}
-                aria-label={isOpen ? "Fechar chat" : "Abrir chat"}
+                aria-label={isOpen ? "Close chat" : "Open chat"}
             >
                 {isOpen ? <X size={24} /> : <MessageCircle size={24} />}
             </button>

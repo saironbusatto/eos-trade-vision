@@ -1,15 +1,18 @@
 import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
 import { useState } from "react";
+import { useLanguage } from "@/i18n";
+import { LanguageSwitcher } from "./LanguageSwitcher";
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { t } = useLanguage();
 
   const navLinks = [
-    { label: "Recursos", href: "#features" },
-    { label: "Especificações", href: "#specs" },
-    { label: "API", href: "#api" },
-    { label: "Documentação", href: "#docs" },
+    { label: t.nav.features, href: "#features" },
+    { label: t.nav.specs, href: "#specs" },
+    { label: t.nav.api, href: "#api" },
+    { label: t.nav.docs, href: "#docs" },
   ];
 
   return (
@@ -34,7 +37,7 @@ const Header = () => {
           <nav className="hidden md:flex items-center gap-8">
             {navLinks.map((link) => (
               <a
-                key={link.label}
+                key={link.href}
                 href={link.href}
                 className="text-sm text-muted-foreground hover:text-foreground transition-colors duration-300 font-medium"
               >
@@ -43,20 +46,24 @@ const Header = () => {
             ))}
           </nav>
 
-          {/* CTA Button */}
-          <div className="hidden md:block">
+          {/* Right side: Language + CTA */}
+          <div className="hidden md:flex items-center gap-4">
+            <LanguageSwitcher />
             <Button variant="hero" size="sm">
-              Começar
+              {t.nav.getStarted}
             </Button>
           </div>
 
           {/* Mobile Menu Toggle */}
-          <button
-            className="md:hidden text-foreground"
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-          >
-            {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
-          </button>
+          <div className="md:hidden flex items-center gap-3">
+            <LanguageSwitcher />
+            <button
+              className="text-foreground"
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+            >
+              {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
+            </button>
+          </div>
         </div>
 
         {/* Mobile Navigation */}
@@ -65,7 +72,7 @@ const Header = () => {
             <div className="flex flex-col gap-4">
               {navLinks.map((link) => (
                 <a
-                  key={link.label}
+                  key={link.href}
                   href={link.href}
                   className="text-sm text-muted-foreground hover:text-foreground transition-colors duration-300 font-medium"
                   onClick={() => setIsMenuOpen(false)}
@@ -74,7 +81,7 @@ const Header = () => {
                 </a>
               ))}
               <Button variant="hero" size="sm" className="mt-2">
-                Começar
+                {t.nav.getStarted}
               </Button>
             </div>
           </nav>

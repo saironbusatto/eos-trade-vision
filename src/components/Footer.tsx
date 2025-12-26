@@ -1,6 +1,9 @@
 import { Github, Send, MessageCircle } from "lucide-react";
+import { useLanguage } from "@/i18n";
 
 const Footer = () => {
+  const { t } = useLanguage();
+
   const socialLinks = [
     { icon: Github, href: "#", label: "GitHub" },
     { icon: Send, href: "#", label: "Telegram" },
@@ -23,7 +26,7 @@ const Footer = () => {
               <span className="font-bold text-foreground">EOS</span>
             </div>
             <span className="text-xs text-muted-foreground font-mono">
-              Um Produto s-iron.tech
+              {t.footer.brand}
             </span>
           </div>
 
@@ -45,14 +48,14 @@ const Footer = () => {
           <div className="flex flex-col items-center md:items-end gap-2">
             <div className="flex items-center gap-4 text-sm">
               <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
-                Divulgação de Riscos
+                {t.footer.riskDisclosure}
               </a>
               <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
-                Política de Privacidade
+                {t.footer.privacyPolicy}
               </a>
             </div>
             <span className="text-xs text-muted-foreground">
-              © {new Date().getFullYear()} s-iron.tech. Todos os direitos reservados.
+              © {new Date().getFullYear()} s-iron.tech. {t.footer.copyright}
             </span>
           </div>
         </div>
@@ -60,9 +63,7 @@ const Footer = () => {
         {/* Risk Warning */}
         <div className="mt-8 pt-8 border-t border-border/30">
           <p className="text-xs text-muted-foreground text-center max-w-3xl mx-auto leading-relaxed">
-            <strong className="text-foreground/70">Divulgação de Riscos:</strong> Negociar instrumentos financeiros envolve alto nível de risco e pode não ser adequado para todos os investidores.
-            Desempenho passado não é indicativo de resultados futuros. EOS fornece sinais apenas para fins informativos e não constitui aconselhamento financeiro.
-            Você deve considerar cuidadosamente seus objetivos de investimento e tolerância ao risco antes de usar sistemas de trading algorítmico.
+            <strong className="text-foreground/70">{t.footer.riskDisclosure}:</strong> {t.footer.riskWarning}
           </p>
         </div>
       </div>

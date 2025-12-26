@@ -1,7 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Zap } from "lucide-react";
+import { useLanguage } from "@/i18n";
 
 const HeroSection = () => {
+  const { t } = useLanguage();
+
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16">
       {/* Background Effects */}
@@ -44,31 +47,29 @@ const HeroSection = () => {
           {/* Badge */}
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-primary/30 bg-primary/5 mb-8 animate-fade-in">
             <Zap className="w-4 h-4 text-primary" />
-            <span className="text-sm font-mono text-primary">GERAÇÃO DE SINAIS ALGORÍTMICOS</span>
+            <span className="text-sm font-mono text-primary">{t.hero.badge}</span>
           </div>
 
           {/* Headline */}
           <h1 className="text-4xl md:text-6xl lg:text-7xl font-extrabold tracking-tight mb-6 animate-fade-in-delay-1">
-            <span className="text-foreground">Um Olho.</span>
+            <span className="text-foreground">{t.hero.headline1}</span>
             <br />
-            <span className="text-gradient">Precisão Infinita.</span>
+            <span className="text-gradient">{t.hero.headline2}</span>
           </h1>
 
           {/* Sub-headline */}
           <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed animate-fade-in-delay-2">
-            EOS processa o ruído do mercado com latência sub-milissegundo, entregando
-            sinais de entrada e saída de alta fidelidade através do nosso motor algorítmico proprietário.
-            Construído para traders que exigem precisão.
+            {t.hero.description}
           </p>
 
           {/* CTAs */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-in-delay-3">
             <Button variant="hero" size="xl" className="group">
-              Conectar à API
+              {t.hero.ctaPrimary}
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </Button>
             <Button variant="heroOutline" size="xl">
-              Ver Documentação
+              {t.hero.ctaSecondary}
             </Button>
           </div>
 
@@ -76,15 +77,15 @@ const HeroSection = () => {
           <div className="grid grid-cols-3 gap-8 mt-16 pt-16 border-t border-border/30 animate-fade-in-delay-3">
             <div className="text-center">
               <div className="text-3xl md:text-4xl font-bold text-foreground font-mono">&lt;1ms</div>
-              <div className="text-sm text-muted-foreground mt-1">Latência de Sinal</div>
+              <div className="text-sm text-muted-foreground mt-1">{t.hero.stat1Label}</div>
             </div>
             <div className="text-center">
               <div className="text-3xl md:text-4xl font-bold text-foreground font-mono">99.97%</div>
-              <div className="text-sm text-muted-foreground mt-1">SLA de Uptime</div>
+              <div className="text-sm text-muted-foreground mt-1">{t.hero.stat2Label}</div>
             </div>
             <div className="text-center">
               <div className="text-3xl md:text-4xl font-bold text-foreground font-mono">24/7</div>
-              <div className="text-sm text-muted-foreground mt-1">Cobertura de Mercado</div>
+              <div className="text-sm text-muted-foreground mt-1">{t.hero.stat3Label}</div>
             </div>
           </div>
         </div>
