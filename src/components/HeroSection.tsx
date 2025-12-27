@@ -64,10 +64,15 @@ const HeroSection = () => {
 
           {/* CTAs */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-in-delay-3">
-            <Button variant="hero" size="xl" className="btn-primary group">
+            <a
+              href="https://t.me/SEU_LINK_DO_CANAL"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-primary group inline-flex items-center justify-center px-8 py-6 rounded-lg font-bold text-lg"
+            >
               {t.hero.ctaPrimary}
-              <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-            </Button>
+              <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
+            </a>
           </div>
 
           {/* Stats - Redesigned Metrics */}

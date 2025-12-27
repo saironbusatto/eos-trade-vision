@@ -34,7 +34,7 @@ class TelegramService {
                 }),
             });
 
-            const result = await response.json();
+            const result = await response.json() as { ok: boolean; description?: string };
 
             if (!result.ok) {
                 console.error("Telegram API error:", result);
@@ -99,16 +99,20 @@ ${emoji} <b>SINAL DE ${actionText}</b> ${emoji}
         try {
             const url = `${TELEGRAM_API_BASE}${this.botToken}/getMe`;
             const response = await fetch(url);
-            const result = await response.json();
+            const result = await response.json() as { ok: boolean; result?: { username: string }; description?: string };
 
             if (result.ok) {
-                return { ok: true, botName: result.result.username };
+                return { ok: true, botName: result.result?.username };
             }
 
             return { ok: false, error: result.description };
         } catch (error) {
             return { ok: false, error: String(error) };
         }
+    }
+
+    async sendBreakoutAlert(message: string): Promise<boolean> {
+        return this.sendMessage(message);
     }
 }
 

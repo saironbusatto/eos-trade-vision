@@ -1,0 +1,77 @@
+{
+    "intensity": {
+        "low": {
+            "description": "Sinais fracos ou volume/delta baixo",
+            "quotes": [
+                "Nem todos os que vagam estao perdidos.",
+                "Mesmo a menor das criaturas pode mudar o curso do futuro.",
+                "Ha esperanca enquanto a Companhia for verdadeira.",
+                "O mundo esta mudando. Sinto na agua. Sinto na terra."
+            ]
+        },
+        "medium": {
+            "description": "Sinais moderados com confirmacao parcial",
+            "quotes": [
+                "O caminho segue em frente.",
+                "E perigoso sair porta afora. Voce pisa na estrada e nao ha como saber onde sera levado.",
+                "Coragem e encontrada nos lugares mais improvaveis.",
+                "Fidelidade ao mestre e mais importante que sabedoria."
+            ]
+        },
+        "high": {
+            "description": "Sinais fortes com todas confirmacoes OFA",
+            "quotes": [
+                "O Olho ve tudo. O Olho nunca dorme.",
+                "Um anel para governar todos, um anel para encontra-los.",
+                "A sombra nao permanece para sempre.",
+                "Ash nazg durbatuluk, ash nazg gimbatul.",
+                "O tempo chegou. O Olho esta fixo.",
+                "Nenhuma fortaleza e inexpugnavel."
+            ]
+        },
+        "extreme": {
+            "description": "Sinais extremos - volume e delta muito acima da media",
+            "quotes": [
+                "A guerra comecou.",
+                "Construa-me um exercito digno de Mordor.",
+                "O mundo dos Homens cairá. Tudo ardera.",
+                "Sauron ve voce. Nao ha escapatoria.",
+                "O fogo de Udun ira consumi-los."
+            ]
+        }
+    },
+    "actions": {
+        "long": {
+            "prefix": [
+                "Os exercitos do Oeste avancam.",
+                "Gondor convoca. E nos atenderemos.",
+                "O sol nasce no Leste."
+            ]
+        },
+        "short": {
+            "prefix": [
+                "A escuridao se aproxima.",
+                "Mordor desperta.",
+                "As sombras se alongam."
+            ]
+        }
+    },
+    "thresholds": {
+        "low": {
+            "volumeMultiplier": 1.5,
+            "deltaRatio": 0.3
+        },
+        "medium": {
+            "volumeMultiplier": 2.0,
+            "deltaRatio": 0.5
+        },
+        "high": {
+            "volumeMultiplier": 3.0,
+            "deltaRatio": 0.7
+        },
+        "extreme": {
+            "volumeMultiplier": 5.0,
+            "deltaRatio": 0.9
+        }
+    }
+}

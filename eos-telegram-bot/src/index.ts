@@ -6,7 +6,17 @@ dotenv.config();
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import { telegram } from "./telegram";
+import { BreakoutDetector } from "./breakoutDetector";
 import type { TradingSignal, AlertMessage } from "./types";
+
+// Initialize breakout detector
+const breakoutDetector = new BreakoutDetector({
+    symbol: "btcusdt",
+    timeframe: "15m",
+    lookback: 20,
+    volumeMultiplier: 1.5,
+    deltaThreshold: 50000
+});
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -99,4 +109,8 @@ app.listen(PORT, () => {
 📡 Server running on port ${PORT}
 🔗 Health check: http://localhost:${PORT}/health
   `);
+
+    // Start breakout detector
+    breakoutDetector.start();
+    console.log("OFA Breakout Detector started");
 });
