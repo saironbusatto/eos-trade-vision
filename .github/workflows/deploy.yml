@@ -19,8 +19,8 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd ~/eos-trade-vision
-            git pull origin main
-            cd eos-telegram-bot
+            cd /home/ec2-user/eos-bot
+            git pull origin main 2>/dev/null || true
+            cd /home/ec2-user/eos-bot
             npm install
             pm2 restart eos-bot
