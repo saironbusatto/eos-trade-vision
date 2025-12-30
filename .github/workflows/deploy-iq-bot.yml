@@ -1,0 +1,26 @@
+name: Deploy IQ Bot to EC2
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'eos-iq-bot/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Deploy IQ Bot to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /home/ec2-user/eos-iq-bot
+            git pull origin main 2>/dev/null || true
+            npm install
+            npm run build
+            pm2 restart eos-iq-bot || pm2 start dist/index.js --name eos-iq-bot
