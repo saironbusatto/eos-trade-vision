@@ -310,7 +310,14 @@ export class TrendingScanner {
         console.log(`[TrendingScanner] Validating ${pending.length} pending signals...`);
 
         const MAX_AGE_MS = 45 * 60 * 1000;  // 45 minutos máximo
-        const UPDATE_INTERVAL_MS = 15 * 60 * 1000;  // Update a cada 15 min
+
+        // Coletar status updates para enviar consolidado
+        const statusUpdates: Array<{
+            signal: any;
+            currentPrice: number;
+            profitPercent: number;
+            ageMinutes: number;
+        }> = [];
 
         for (const signal of pending) {
             try {
@@ -362,48 +369,59 @@ export class TrendingScanner {
                     }
                 }
 
-                // 4. A cada 15 min, envia status update (se não for 0 min)
+                // 4. Coletar para status update consolidado (a cada 15 min)
                 if (ageMinutes >= 15 && ageMinutes % 15 < 5) {
-                    // Só envia 1x por janela de 15 min (ageMinutes 15-19, 30-34)
                     const profit_percent = signal.action === 'BUY'
                         ? ((currentPrice - signal.entry_price) / signal.entry_price) * 100
                         : ((signal.entry_price - currentPrice) / signal.entry_price) * 100;
 
-                    await this.sendStatusUpdate(signal, currentPrice, profit_percent, ageMinutes);
+                    statusUpdates.push({ signal, currentPrice, profitPercent: profit_percent, ageMinutes });
                 }
 
             } catch (error) {
                 console.error(`[TrendingScanner] Error validating #${signal.id}:`, error);
             }
         }
+
+        // Enviar status updates consolidados (uma única mensagem)
+        if (statusUpdates.length > 0) {
+            await this.sendConsolidatedStatusUpdate(statusUpdates);
+        }
     }
 
-    private async sendStatusUpdate(
-        signal: any,
-        currentPrice: number,
-        profitPercent: number,
-        ageMinutes: number
-    ): Promise<void> {
-        const symbol = signal.symbol.replace("USDT", "");
-        const profitStr = profitPercent >= 0 ? `+${profitPercent.toFixed(2)}%` : `${profitPercent.toFixed(2)}%`;
-        const emoji = profitPercent >= 0 ? '🟢' : '🔴';
-        const distanceToStop = signal.action === 'BUY'
-            ? ((currentPrice - signal.stop_loss) / signal.entry_price * 100).toFixed(2)
-            : ((signal.stop_loss - currentPrice) / signal.entry_price * 100).toFixed(2);
-        const distanceToTarget = signal.action === 'BUY'
-            ? ((signal.take_profit - currentPrice) / signal.entry_price * 100).toFixed(2)
-            : ((currentPrice - signal.take_profit) / signal.entry_price * 100).toFixed(2);
+    // Enviar status updates consolidados em uma única mensagem
+    private async sendConsolidatedStatusUpdate(updates: Array<{
+        signal: any;
+        currentPrice: number;
+        profitPercent: number;
+        ageMinutes: number;
+    }>): Promise<void> {
+        if (updates.length === 0) return;
 
-        const message = `⏱️ *#${signal.id} ${symbol}* - ${ageMinutes}min
+        let message = `⏱️ *Status das Operações* (${updates.length} ativas)\n\n`;
 
-${emoji} Atual: ${formatPrice(currentPrice)} (${profitStr})
-📍 Entry: ${formatPrice(signal.entry_price)}
-🛑 Stop: ${distanceToStop}% | 🎯 Alvo: ${distanceToTarget}%
-⏰ Fecha em: ${45 - ageMinutes}min`;
+        for (const { signal, currentPrice, profitPercent, ageMinutes } of updates) {
+            const symbol = signal.symbol.replace("USDT", "");
+            const profitStr = profitPercent >= 0 ? `+${profitPercent.toFixed(2)}%` : `${profitPercent.toFixed(2)}%`;
+            const emoji = profitPercent >= 0 ? '🟢' : '🔴';
+            const distanceToStop = signal.action === 'BUY'
+                ? ((currentPrice - signal.stop_loss) / signal.entry_price * 100).toFixed(2)
+                : ((signal.stop_loss - currentPrice) / signal.entry_price * 100).toFixed(2);
+            const distanceToTarget = signal.action === 'BUY'
+                ? ((signal.take_profit - currentPrice) / signal.entry_price * 100).toFixed(2)
+                : ((currentPrice - signal.take_profit) / signal.entry_price * 100).toFixed(2);
+
+            message += `${emoji} *#${signal.id} ${symbol}* - ${ageMinutes}min\n`;
+            message += `Atual: ${formatPrice(currentPrice)} (${profitStr})\n`;
+            message += `Stop: ${distanceToStop}% | Alvo: ${distanceToTarget}% | Fecha: ${45 - ageMinutes}min\n\n`;
+        }
+
+        message += `━━━━━━━━━━━━━━━━━━━`;
 
         await telegram.sendBreakoutAlert(message);
-        console.log(`[TrendingScanner] Status update #${signal.id}: ${profitStr} @ ${ageMinutes}min`);
+        console.log(`[TrendingScanner] Consolidated status update: ${updates.length} signals`);
     }
+
 
     private async sendTimeoutResult(
         signal: any,
