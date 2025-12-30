@@ -1,0 +1,24 @@
+{
+    "name": "eos-ofa-engine",
+    "version": "1.0.0",
+    "description": "EOS OFA Engine - Order Flow Analysis for Forex Signals",
+    "main": "dist/index.js",
+    "scripts": {
+        "dev": "tsx watch src/index.ts",
+        "build": "tsc",
+        "start": "node dist/index.js"
+    },
+    "dependencies": {
+        "dotenv": "^16.3.1",
+        "node-fetch": "^2.7.0",
+        "telegraf": "^4.15.3",
+        "ws": "^8.14.2"
+    },
+    "devDependencies": {
+        "@types/node": "^20.10.5",
+        "@types/node-fetch": "^2.6.9",
+        "@types/ws": "^8.5.10",
+        "tsx": "^4.7.0",
+        "typescript": "^5.3.3"
+    }
+}

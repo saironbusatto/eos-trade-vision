@@ -1,22 +1,12 @@
 // Load environment variables FIRST before anything else
-// CI/CD Test: Auto-deploy triggered at 2025-12-26 18:55
 import dotenv from "dotenv";
 dotenv.config();
 
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import { telegram } from "./telegram";
-import { BreakoutDetector } from "./breakoutDetector";
+import { trendingScanner } from "./trendingScanner";
 import type { TradingSignal, AlertMessage } from "./types";
-
-// Initialize breakout detector
-const breakoutDetector = new BreakoutDetector({
-    symbol: "btcusdt",
-    timeframe: "15m",
-    lookback: 20,
-    volumeMultiplier: 1.5,
-    deltaThreshold: 50000
-});
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -110,7 +100,7 @@ app.listen(PORT, () => {
 🔗 Health check: http://localhost:${PORT}/health
   `);
 
-    // Start breakout detector
-    breakoutDetector.start();
-    console.log("OFA Breakout Detector started");
+    // Start trending scanner (top 10 coins, every 10 min)
+    trendingScanner.start();
+    console.log("TrendingScanner started - analyzing top 10 coins every 10 min");
 });

@@ -1,4 +1,5 @@
 import type { TradingSignal, AlertMessage } from "./types";
+import { getRandomQuote } from "./quotes";
 
 const TELEGRAM_API_BASE = "https://api.telegram.org/bot";
 
@@ -19,7 +20,7 @@ class TelegramService {
         return true;
     }
 
-    private async sendMessage(text: string, parseMode: "HTML" | "Markdown" = "HTML"): Promise<boolean> {
+    private async sendMessage(text: string, parseMode: "HTML" | "Markdown" = "Markdown"): Promise<boolean> {
         try {
             const url = `${TELEGRAM_API_BASE}${this.botToken}/sendMessage`;
 
@@ -50,33 +51,28 @@ class TelegramService {
     }
 
     async sendSignal(signal: TradingSignal): Promise<boolean> {
-        const emoji = signal.action === "BUY" ? "🟢" : "🔴";
         const actionText = signal.action === "BUY" ? "COMPRA" : "VENDA";
 
-        let message = `
-${emoji} <b>SINAL DE ${actionText}</b> ${emoji}
+        let message = `*Sinal Palantir!*
 
-📊 <b>Par:</b> ${signal.symbol}
-💰 <b>Preço:</b> $${signal.price.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+Par: ${signal.symbol}
+Direção: ${actionText}
+Preço: $${signal.price.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
 `;
 
         if (signal.stopLoss) {
-            message += `🛑 <b>Stop Loss:</b> $${signal.stopLoss.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}\n`;
+            message += `Stop: $${signal.stopLoss.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}\n`;
         }
 
         if (signal.takeProfit) {
-            message += `🎯 <b>Take Profit:</b> $${signal.takeProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}\n`;
+            message += `Alvo: $${signal.takeProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}\n`;
         }
 
         if (signal.timeframe) {
-            message += `⏰ <b>Timeframe:</b> ${signal.timeframe}\n`;
+            message += `Timeframe: ${signal.timeframe}\n`;
         }
 
-        if (signal.notes) {
-            message += `\n📝 <i>${signal.notes}</i>\n`;
-        }
-
-        message += `\n⚡️ <i>EOS - Eye of Sauron</i>`;
+        message += `\n_${getRandomQuote()}_`;
 
         return this.sendMessage(message.trim());
     }

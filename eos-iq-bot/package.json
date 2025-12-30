@@ -1,0 +1,24 @@
+{
+    "name": "eos-iq-bot",
+    "version": "1.0.0",
+    "description": "EOS IQ Bot - Binary Options Signal Bot",
+    "main": "dist/index.js",
+    "scripts": {
+        "dev": "tsx watch src/index.ts",
+        "build": "tsc",
+        "start": "node dist/index.js"
+    },
+    "dependencies": {
+        "@types/node-fetch": "^2.6.13",
+        "better-sqlite3": "^11.7.0",
+        "dotenv": "^16.3.1",
+        "node-fetch": "^2.7.0",
+        "telegraf": "^4.15.3"
+    },
+    "devDependencies": {
+        "@types/better-sqlite3": "^7.6.13",
+        "@types/node": "^20.10.5",
+        "tsx": "^4.7.0",
+        "typescript": "^5.3.3"
+    }
+}
