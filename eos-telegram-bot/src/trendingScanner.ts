@@ -427,6 +427,7 @@ Resultado: ${profitStr} em ${ageMinutes}min
 ━━━━━ Estatísticas ━━━━━
 🏆 Wins: ${stats.wins} | ❌ Losses: ${stats.losses}
 📊 Win Rate: ${winRate}%
+🔄 Pendentes: ${stats.pending}
 ━━━━━━━━━━━━━━━━━━━`;
 
         await telegram.sendBreakoutAlert(message);
@@ -469,6 +470,7 @@ Resultado: ${profitStr}
 🏆 Wins: ${stats.wins} | ❌ Losses: ${stats.losses}
 📊 Win Rate: ${winRate}%
 💰 Média: ${avgProfitStr}
+🔄 Pendentes: ${stats.pending}
 ━━━━━━━━━━━━━━━━━━━`;
 
         await telegram.sendBreakoutAlert(message);
