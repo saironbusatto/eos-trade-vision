@@ -6,6 +6,7 @@ import { sqliteDatabase } from './sqliteDatabase';
 import { forexData } from './forexData';
 import { ofaAnalyzer, OFAIndicators } from './ofa/analyzer';
 import { getRandomQuote } from './quotes';
+import { isGoldenSetup, formatGoldenMessage } from './goldenSetups';
 
 
 // Configuration
@@ -82,9 +83,15 @@ async function generateSignal(pair: string, indicators: OFAIndicators) {
     const quote = await forexData.getPrice(pair);
     if (!quote) return;
 
+    const direction = indicators.direction as 'CALL' | 'PUT';
+
+    // Verifica se é horário de ALTA CONFLUÊNCIA (>70% WR) ANTES de salvar
+    const goldenSetup = isGoldenSetup(pair, direction);
+
+    // Sempre salva no banco (para estatísticas) - com flag is_golden
     const signalId = sqliteDatabase.insertSignal({
         pair,
-        direction: indicators.direction as 'CALL' | 'PUT',
+        direction,
         entry_price: quote.price,
         score: indicators.score,
         expiration_min: 5,
@@ -95,26 +102,22 @@ async function generateSignal(pair: string, indicators: OFAIndicators) {
         stacked_imbalances: indicators.stackedImbalances,
         vpoc_migration: indicators.vpocMigration,
         reversal_sequence: indicators.reversalSequence,
+        is_golden: goldenSetup !== null,
     });
 
-    const acao = indicators.direction === 'CALL' ? 'COMPRA' : 'VENDA';
+    console.log(`[Engine] Sinal #${signalId} salvo: ${pair} ${direction} score=${indicators.score}`);
 
-    const message = `*Novo Sinal!*
+    if (goldenSetup) {
+        // GOLDEN SETUP - Envia para Telegram!
+        const message = formatGoldenMessage(pair, direction, quote.price, indicators.score, goldenSetup);
+        const sent = await telegram.sendMessage(message);
 
-Par: ${pair}
-Direção: ${acao}
-Preço: ${quote.price.toFixed(5)}
-Probabilidade: ${indicators.score}%
-
-_${getRandomQuote()}_
-
-#${signalId}`;
-
-    const sent = await telegram.sendMessage(message);
-    if (sent) {
-        console.log(`[Engine] Sinal #${signalId} enviado: ${pair} ${indicators.direction}`);
+        if (sent) {
+            console.log(`[Engine] 🎯 GOLDEN SIGNAL #${signalId} enviado: ${pair} ${direction} (${goldenSetup.winRate}% WR)`);
+        }
     } else {
-        console.error('[Engine] Erro ao enviar sinal');
+        // Sinal normal - apenas log, não envia para Telegram
+        console.log(`[Engine] Sinal #${signalId} apenas gravado (não é horário golden)`);
     }
 }
 
@@ -134,8 +137,13 @@ async function validatePendingSignals() {
             }
 
             sqliteDatabase.closeSignal(signal.id, quote.price, result);
+            console.log(`[Engine] Sinal #${signal.id} fechado: ${result}`);
 
-            await telegram.sendMessage(`*#${signal.id}* ${signal.pair} - ${result === 'WIN' ? '✅' : '❌'} ${result}`);
+            // Envia resultado ao Telegram APENAS se for sinal GOLDEN
+            if (signal.is_golden) {
+                const emoji = result === 'WIN' ? '✅' : '❌';
+                await telegram.sendMessage(`🎯 *#${signal.id}* ${signal.pair} - ${emoji} ${result}`);
+            }
 
         } catch (error) {
             console.error(`[Engine] Erro validar #${signal.id}:`, error);

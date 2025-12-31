@@ -33,6 +33,9 @@ export interface Signal {
     // Time features
     hour_utc: number;
     day_of_week: number;
+
+    // Golden flag
+    is_golden: boolean;
 }
 
 export interface MLTrainingRecord {
@@ -89,6 +92,7 @@ function initSchema(): void {
             reversal_sequence INTEGER,
             
             strategy_version TEXT DEFAULT 'v2.0',
+            is_golden INTEGER DEFAULT 0,
             
             hour_utc INTEGER,
             day_of_week INTEGER
@@ -145,6 +149,7 @@ export const sqliteDatabase = {
         stacked_imbalances?: number;
         vpoc_migration?: string;
         reversal_sequence?: number;
+        is_golden?: boolean;
     }): number {
         const now = new Date();
         const stmt = db.prepare(`
@@ -152,8 +157,8 @@ export const sqliteDatabase = {
                 pair, direction, entry_price, score, expiration_min,
                 delta, delta_cumulative, absorption_detected, divergence_detected,
                 stacked_imbalances, vpoc_migration, reversal_sequence,
-                hour_utc, day_of_week, strategy_version
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'v3.0')
+                hour_utc, day_of_week, strategy_version, is_golden
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'v3.0', ?)
         `);
 
         const result = stmt.run(
@@ -163,11 +168,13 @@ export const sqliteDatabase = {
             signal.absorption_detected ? 1 : 0, signal.divergence_detected ? 1 : 0,
             signal.stacked_imbalances ?? 0, signal.vpoc_migration ?? 'FLAT',
             signal.reversal_sequence ?? 0,
-            now.getUTCHours(), now.getUTCDay()
+            now.getUTCHours(), now.getUTCDay(),
+            signal.is_golden ? 1 : 0
         );
 
         const id = result.lastInsertRowid as number;
-        console.log(`[SQLite] Signal #${id} saved: ${signal.pair} ${signal.direction} @ ${signal.entry_price} (v3.0)`);
+        const goldenLabel = signal.is_golden ? ' [GOLDEN]' : '';
+        console.log(`[SQLite] Signal #${id} saved: ${signal.pair} ${signal.direction} @ ${signal.entry_price} (v3.0)${goldenLabel}`);
         return id;
     },
 
@@ -229,6 +236,23 @@ export const sqliteDatabase = {
         const wins = db.prepare("SELECT COUNT(*) as c FROM signals WHERE result = 'WIN' AND strategy_version = 'v3.0'").get() as { c: number };
         const losses = db.prepare("SELECT COUNT(*) as c FROM signals WHERE result = 'LOSS' AND strategy_version = 'v3.0'").get() as { c: number };
         const pending = db.prepare("SELECT COUNT(*) as c FROM signals WHERE result = 'PENDING'").get() as { c: number };
+
+        const closed = wins.c + losses.c;
+        return {
+            total: total.c,
+            wins: wins.c,
+            losses: losses.c,
+            pending: pending.c,
+            win_rate: closed > 0 ? (wins.c / closed) * 100 : 0
+        };
+    },
+
+    // Get GOLDEN stats (sinais de alta confluência)
+    getGoldenStats(): { total: number; wins: number; losses: number; pending: number; win_rate: number } {
+        const total = db.prepare('SELECT COUNT(*) as c FROM signals WHERE is_golden = 1').get() as { c: number };
+        const wins = db.prepare("SELECT COUNT(*) as c FROM signals WHERE result = 'WIN' AND is_golden = 1").get() as { c: number };
+        const losses = db.prepare("SELECT COUNT(*) as c FROM signals WHERE result = 'LOSS' AND is_golden = 1").get() as { c: number };
+        const pending = db.prepare("SELECT COUNT(*) as c FROM signals WHERE result = 'PENDING' AND is_golden = 1").get() as { c: number };
 
         const closed = wins.c + losses.c;
         return {

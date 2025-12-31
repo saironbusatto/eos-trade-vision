@@ -3,6 +3,10 @@ import { getRandomQuote } from "./quotes";
 
 const TELEGRAM_API_BASE = "https://api.telegram.org/bot";
 
+// Flag para desabilitar envio de sinais ao Telegram
+// Definir TELEGRAM_ENABLED=true para habilitar
+const TELEGRAM_ENABLED = process.env.TELEGRAM_ENABLED === 'true';
+
 class TelegramService {
     private get botToken(): string {
         return process.env.TELEGRAM_BOT_TOKEN || "";
@@ -21,6 +25,12 @@ class TelegramService {
     }
 
     private async sendMessage(text: string, parseMode: "HTML" | "Markdown" = "Markdown"): Promise<boolean> {
+        // Se Telegram desabilitado, apenas log e retorna true
+        if (!TELEGRAM_ENABLED) {
+            console.log("[Telegram] DISABLED - Mensagem não enviada (TELEGRAM_ENABLED=false)");
+            return true;
+        }
+
         try {
             const url = `${TELEGRAM_API_BASE}${this.botToken}/sendMessage`;
 
