@@ -112,6 +112,8 @@ function initSchema(): void {
             f_momentum REAL DEFAULT 0.5,
             f_volume REAL DEFAULT 0.5,
             
+            strategy_version TEXT DEFAULT 'v2.0',
+            
             volume_ratio REAL,
             trend REAL,
             momentum REAL,
@@ -216,8 +218,9 @@ export const sqliteDatabase = {
                 symbol, action, entry_price, stop_loss, take_profit, score,
                 f_smart_money, f_price_context, f_imbalance, f_absorption, 
                 f_trend, f_momentum, f_volume,
-                volume_ratio, trend, momentum, price_change_24h
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                volume_ratio, trend, momentum, price_change_24h,
+                strategy_version
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'v3.0')
         `);
 
         const result = stmt.run(
@@ -228,7 +231,7 @@ export const sqliteDatabase = {
         );
 
         const id = result.lastInsertRowid as number;
-        console.log(`[SQLite] Signal #${id} saved: ${signal.symbol} ${signal.action} @ $${signal.entry_price}`);
+        console.log(`[SQLite] Signal #${id} saved: ${signal.symbol} ${signal.action} @ $${signal.entry_price} (v3.0)`);
         return id;
     },
 
@@ -369,12 +372,15 @@ export const sqliteDatabase = {
         this.closeSignal(id, exitPrice, result, profitPercent, macroData);
     },
 
-    // Get statistics
+    // Get statistics (v3.0 only - nova estratégia)
     getStats(): { signals: number; pending: number; wins: number; losses: number; win_rate: number; avg_profit: number } {
+        // Total e pending de todas as versões
         const total = db.prepare('SELECT COUNT(*) as count FROM signals').get() as { count: number };
         const pending = db.prepare("SELECT COUNT(*) as count FROM signals WHERE result = 'PENDING'").get() as { count: number };
-        const wins = db.prepare("SELECT COUNT(*) as count FROM signals WHERE result = 'WIN'").get() as { count: number };
-        const losses = db.prepare("SELECT COUNT(*) as count FROM signals WHERE result = 'LOSS'").get() as { count: number };
+
+        // Wins e losses apenas da v3.0 (nova estratégia)
+        const wins = db.prepare("SELECT COUNT(*) as count FROM signals WHERE result = 'WIN' AND strategy_version = 'v3.0'").get() as { count: number };
+        const losses = db.prepare("SELECT COUNT(*) as count FROM signals WHERE result = 'LOSS' AND strategy_version = 'v3.0'").get() as { count: number };
 
         const avgProfit = db.prepare('SELECT AVG(final_profit) as avg FROM ml_training').get() as { avg: number | null };
 

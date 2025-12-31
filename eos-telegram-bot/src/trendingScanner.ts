@@ -46,11 +46,13 @@ interface OFASignal {
 }
 
 // ============================================
-// DATA COLLECTION MODE: Baixo threshold para coletar mais dados
-// Quando tivermos dados suficientes, subir MIN_SCORE para 75%
+// EoS CRYPTO v3.0 - Ensemble + Cross-Validation
+// Nova estratégia com 4 modelos votando (XGBoost, LightGBM, RF, GB)
+// Threshold 70% para maior precisão
 // ============================================
-const DATA_COLLECTION_MODE = true;
-const MIN_SCORE = DATA_COLLECTION_MODE ? 40 : 75; // 40% para coleta, 75% para produção
+const STRATEGY_VERSION = 'v3.0';
+const DATA_COLLECTION_MODE = true; // true = continua coletando dados
+const MIN_SCORE = DATA_COLLECTION_MODE ? 40 : 70; // 40% coleta, 70% produção
 const SCAN_INTERVAL = 10 * 60 * 1000; // 10 minutos
 const VALIDATION_INTERVAL = 5 * 60 * 1000; // Valida a cada 5 min
 
