@@ -1,4 +1,4 @@
-import { TimeSeries, twelveData } from '../twelveData';
+import { TimeSeries, forexData } from '../forexData';
 import { config } from '../config';
 
 /**
@@ -38,7 +38,7 @@ export class OFAAnalyzer {
      */
     async analyze(pair: string): Promise<OFAIndicators> {
         // Buscar dados históricos
-        const timeSeries = await twelveData.getTimeSeries(pair, '1min', 30);
+        const timeSeries = await forexData.getTimeSeries(pair, '1min', 30);
 
         if (timeSeries.length < 5) {
             return this.getEmptyIndicators();
@@ -375,13 +375,13 @@ export class OFAAnalyzer {
         if (indicators.stackedImbalances >= 3) score += 10;
         if (indicators.reversalSequence >= 2) score += 15;
 
-        // Determinar direção
-        if (indicators.deltaCumulative > 0 && indicators.vpocMigration === 'UP') {
+        // Determinar direção baseado no delta (principal) e VPOC (confirmação)
+        if (indicators.deltaCumulative > 0) {
             direction = 'CALL';
-            score += 10;
-        } else if (indicators.deltaCumulative < 0 && indicators.vpocMigration === 'DOWN') {
+            if (indicators.vpocMigration === 'UP') score += 10; // Confirmação
+        } else if (indicators.deltaCumulative < 0) {
             direction = 'PUT';
-            score += 10;
+            if (indicators.vpocMigration === 'DOWN') score += 10; // Confirmação
         }
 
         // Confiança baseada na quantidade de confirmações

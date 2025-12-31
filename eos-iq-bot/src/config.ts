@@ -32,7 +32,7 @@ export const config = {
 
     // OFA Settings
     ofa: {
-        minScore: 65,
+        minScore: 40, // Modo coleta de dados
         deltaThreshold: 500,
         absorptionVolumeMin: 1000,
     },

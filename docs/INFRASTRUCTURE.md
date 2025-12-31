@@ -7,53 +7,89 @@
 - **OS:** Amazon Linux 2023
 - **Região:** sa-east-1 (São Paulo)
 
-## Portas Abertas (Security Group)
+## Portas Abertas
 
-| Porta | Protocolo | Uso |
-|-------|-----------|-----|
-| 22 | TCP | SSH |
-| 80 | TCP | HTTP (redirect to HTTPS) |
-| 443 | TCP | HTTPS |
-| 3000 | TCP | API Backend |
+| Porta | Uso |
+|-------|-----|
+| 22 | SSH |
+| 80 | HTTP (redirect HTTPS) |
+| 443 | HTTPS |
+| 3000 | API Backend |
 
-## Serviços Rodando
+## Processos PM2
 
-### Nginx
-- Serve frontend em `/var/www/eos/`
-- Proxy reverso para API em `localhost:3000`
-- SSL via Let's Encrypt
+| ID | Nome | Diretório | Descrição |
+|----|------|-----------|-----------|
+| 1 | eos-bot | /home/ec2-user/eos-bot | EoS CRYPTO Bot |
+| 2 | eos-iq | /home/ec2-user/eos-iq-bot | EoS IQ Bot |
 
-```
-/etc/nginx/conf.d/eos.conf
-```
-
-### PM2 - Process Manager
-
-| ID | Nome | Diretório | Porta |
-|----|------|-----------|-------|
-| 0 | eos-bot | /home/ec2-user/eos-bot | 3000 |
-| 1 | eos-iq | /home/ec2-user/eos-iq-bot | - |
-
-## Estrutura de Arquivos EC2
+## Estrutura de Arquivos
 
 ```
 /home/ec2-user/
-├── eos-bot/              # EOS Crypto Bot
-│   ├── dist/
+├── eos-bot/                    # EoS CRYPTO Bot
+│   ├── dist/                   # Código compilado
+│   ├── data/
+│   │   └── eos.db              # SQLite database
 │   ├── node_modules/
 │   ├── package.json
 │   └── .env
 │
-└── eos-iq-bot/           # EOS IQ Bot
+└── eos-iq-bot/                 # EoS IQ Bot
     ├── dist/
+    ├── data/
+    │   └── eos-iq.db           # SQLite database
     ├── node_modules/
     ├── package.json
     └── .env
 
-/var/www/eos/             # Frontend
+/var/www/eos/                   # Frontend
 ├── index.html
-├── assets/
-└── ...
+└── assets/
+```
+
+## Databases
+
+| Bot | Arquivo | Conteúdo |
+|-----|---------|----------|
+| EoS CRYPTO | eos.db | signals, ml_training, price_checkpoints |
+| EoS IQ | eos-iq.db | signals |
+
+## Comandos Úteis
+
+```bash
+# Conectar
+ssh -i sirontech_key.pem ec2-user@54.232.17.9
+
+# Status dos bots
+pm2 status
+
+# Logs em tempo real
+pm2 logs eos-bot --lines 50
+pm2 logs eos-iq --lines 50
+
+# Reiniciar bots
+pm2 restart eos-bot eos-iq
+
+# Ver erros
+cat /home/ec2-user/.pm2/logs/eos-bot-error.log
+
+# Backup database
+scp -i sirontech_key.pem ec2-user@54.232.17.9:/home/ec2-user/eos-bot/data/eos.db ./backup/
+```
+
+## Deploy
+
+```bash
+# EoS CRYPTO
+cd eos-telegram-bot && npm run build
+scp -i sirontech_key.pem -r dist/* ec2-user@54.232.17.9:/home/ec2-user/eos-bot/dist/
+ssh -i sirontech_key.pem ec2-user@54.232.17.9 "pm2 restart eos-bot"
+
+# EoS IQ
+cd eos-iq-bot && npm run build
+scp -i sirontech_key.pem -r dist/* ec2-user@54.232.17.9:/home/ec2-user/eos-iq-bot/dist/
+ssh -i sirontech_key.pem ec2-user@54.232.17.9 "pm2 restart eos-iq"
 ```
 
 ## SSL/HTTPS
@@ -62,10 +98,7 @@
 - **Renovação:** Automática via Certbot
 
 ```bash
-# Verificar certificado
 sudo certbot certificates
-
-# Renovar manualmente
 sudo certbot renew
 ```
 
@@ -74,68 +107,7 @@ sudo certbot renew
 - **Domínio:** eos.s-iron.tech
 - **Tipo:** A Record
 - **Valor:** 54.232.17.9
-- **Provedor:** Locaweb
-
-## Comandos Úteis
-
-```bash
-# Conectar ao servidor
-ssh -i sirontech_key.pem ec2-user@54.232.17.9
-
-# Ver uso de memória
-free -h
-
-# Ver uso de disco
-df -h
-
-# Ver processos PM2
-pm2 status
-pm2 monit
-
-# Ver logs Nginx
-sudo tail -f /var/log/nginx/error.log
-
-# Reiniciar Nginx
-sudo systemctl reload nginx
-
-# Backup PM2 config
-pm2 save
-```
-
-## Troubleshooting
-
-### Bot não responde
-```bash
-pm2 logs eos-bot --lines 50
-pm2 restart eos-bot
-```
-
-### Site não carrega
-```bash
-sudo nginx -t
-sudo systemctl status nginx
-curl localhost/health
-```
-
-### SSL expirado
-```bash
-sudo certbot renew
-sudo systemctl reload nginx
-```
-
-## Backup
-
-### Salvar configuração PM2
-```bash
-pm2 save
-```
-
-### Exportar .env (fazer localmente)
-```bash
-scp ec2-user@54.232.17.9:/home/ec2-user/eos-bot/.env ./backup/eos-bot.env
-scp ec2-user@54.232.17.9:/home/ec2-user/eos-iq-bot/.env ./backup/eos-iq.env
-```
 
 ---
 
-*Última atualização: 28/12/2025*
+*Última atualização: 31/12/2024*

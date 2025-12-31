@@ -184,14 +184,14 @@ Se funding > 0.03% = aviso ⚠️
        └─> analyzeAbsorption()
 
 3. Se score >= MIN_SCORE:
-   ├─> Salva em crypto_signals.json
-   └─> Envia para Telegram
+   ├─> Salva em SQLite (signals table)
+   └─> Envia para Telegram (🔮 EoS CRYPTO)
 
 4. Validation loop [cada 5 min]
    ├─> Busca sinais PENDING
    ├─> Verifica se bateu stop/target
    ├─> Atualiza resultado (WIN/LOSS)
-   └─> Salva em ml_training.json
+   └─> Salva em ml_training table
 ```
 
 ---
@@ -203,8 +203,7 @@ Se funding > 0.03% = aviso ⚠️
 ```
 TELEGRAM_BOT_TOKEN=xxx
 TELEGRAM_CHANNEL_ID=-100xxx
-API_SECRET=xxx
-DATABASE_PATH=./data/crypto_signals.json
+DATABASE_PATH=./data/eos.db
 ```
 
 ### Constantes

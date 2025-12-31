@@ -1,100 +1,145 @@
 # EOS - Eye of Sauron 🔴
 
-Sistema de trading algorítmico com **Order Flow Analysis (OFA)** profissional para criptomoedas e Forex.
+Sistema de trading algorítmico com **Order Flow Analysis (OFA)** + **Machine Learning** para criptomoedas e Forex.
 
-## 🎯 Features Principais
+## 🎯 Overview
 
-### Crypto Bot (eos-telegram-bot)
-- **TrendingScanner** - Monitora top 10 moedas por volume a cada 10 min
-- **OFA Profissional** - 5 módulos de análise (90% capacidade)
-- **ML Ready** - 7 features normalizadas para machine learning
-- **Binance Futures** - Cálculo de alavancagem, taxas, funding rate
-
-### Forex Bot (eos-iq-bot)
-- **10 Pares Forex** - EUR/USD, GBP/USD, etc
-- **10 Indicadores OFA** - Análise completa
-- **Auto-start** - Liga automaticamente quando mercado abre
-- **Database JSON** - Histórico para análise
+| Bot | Prefixo | Mercado | Status |
+|-----|---------|---------|--------|
+| **EoS CRYPTO** | 🔮 | Criptomoedas (Binance) | ✅ Ativo |
+| **EoS IQ** | 🎯 | Forex (IQ Option) | ✅ Ativo |
+| **EoS ML** | 🧠 | Filtro Inteligente | ✅ Integrado |
 
 ---
 
-## 🧠 Order Flow Analysis (OFA)
+## 🧠 Machine Learning v2.1
+
+### Filosofia do Modelo
+
+> *"O que o Order Flow fornece ao trader é a capacidade de ficar fora do mercado quando não há razão para negociar."* — Michael Valtos
+
+O modelo ML **não tenta prever preços** — ele **filtra sinais ruins**.
+
+### Pipeline de Decisão
+
+```
+Sinal OFA → GMM (Regime) → XGBoost (Probabilidade) → Threshold → Executar/Rejeitar
+```
+
+### Decisões Técnicas (Kaabar + Ruiz & Chan)
+
+| Conceito | Implementação | Fonte |
+|----------|---------------|-------|
+| **Fractional Differentiation** | Estacionariedade sem perder memória | Kaabar |
+| **Triple Barrier Method** | WIN=TP, LOSS=SL/Timeout | López de Prado |
+| **TimeSeriesSplit** | Evitar look-ahead bias | Scikit-learn |
+| **GMM Regime Detection** | Pausar em regimes desconhecidos | Ruiz & Chan |
+| **Probability Threshold** | Só operar se prob > 65% | Kaabar |
+
+### Features Utilizadas
+
+**X_regime (GMM - Macro):**
+- `f_volume` - Volume ratio
+- `f_momentum` - Proxy de volatilidade  
+- `f_trend` - Tendência
+- `hour_utc` - Sessão de mercado
+
+**X_signal (XGBoost - Direcional):**
+- `f_price_context_frac` - Distância VWAP (com FracDiff)
+- `f_smart_money` - Bias institucional
+- `f_imbalance` - Força imbalances
+- `f_absorption` - Absorção passiva
+- `score` - Score OFA
+
+### Modos de Operação
+
+| Modo | MIN_SCORE | ML Filter | Descrição |
+|------|-----------|-----------|-----------|
+| **Coleta (Atual)** | 40 | Log only | Coletar dados para treinar |
+| **Produção** | 75 | Ativo | Filtrar sinais ruins |
+
+### Métricas Atuais (2166 sinais)
+
+| Score | Trades | Win Rate | Sharpe | Max DD |
+|-------|--------|----------|--------|--------|
+| 40+ | 2166 | 50.6% | 0.01 | 17.0% |
+| 60+ | 1160 | 51.3% | 0.30 | 13.2% |
+| 70+ | 591 | 51.3% | 0.53 | 9.8% |
+
+### Estrutura do Projeto ML
+
+```
+eos-ml/
+├── src/
+│   ├── export_data.py      # SQLite → Parquet
+│   ├── fracdiff.py         # Diferenciação fracionária
+│   ├── train_pipeline.py   # Pipeline completo
+│   ├── inference.py        # Classe EoSMLPredictor
+│   ├── api_server.py       # API Flask
+│   └── validate.py         # Validação de métricas
+├── models/
+│   ├── gmm_regime.pkl      # Detector de regime
+│   └── xgboost_v1.pkl      # Classificador
+├── data/
+│   └── *.parquet           # Dados processados
+└── notebooks/              # 6 notebooks de análise
+```
+
+---
+
+## 📊 EoS CRYPTO Bot
+
+### Features
+- **TrendingScanner** - Monitora top 10 moedas por volume a cada 10 min
+- **5 Módulos OFA** - Smart Money, Volume Profile, Footprint, Imbalance, Absorption
+- **SQLite Database** - Persistência de sinais e dados para ML
+- **ML Filter** - Integração com modelo de filtro (mlFilter.ts)
+- **Binance Futures** - Cálculo de alavancagem, taxas, funding rate
+- **Validação Automática** - Acompanha sinais por 45 min, reporta WIN/LOSS
+
+### Database (SQLite)
+
+```
+data/eos.db
+├── signals         # Sinais ativos (PENDING/WIN/LOSS)
+├── ml_training     # Dados validados para ML
+└── price_checkpoints # Checkpoints de preço (5/10/15/30 min)
+```
+
+---
+
+## 🎯 EoS IQ Bot
+
+### Features
+- **10 Pares Forex** - EUR/USD, GBP/USD, USD/JPY, etc
+- **10 Indicadores OFA** - Análise completa
+- **API Gratuita** - Usa open.er-api.com (sem API key)
+- **Auto-start** - Liga quando mercado Forex abre
+
+---
+
+## 🔮 Order Flow Analysis (OFA)
 
 ### Módulos Implementados
 
-| Módulo | Arquivo | O Que Faz |
-|--------|---------|-----------|
-| **Smart Money Filter** | `ofa/smartMoneyFilter.ts` | Filtra trades por tamanho ($500-$100k+) |
-| **Volume Profile** | `ofa/volumeProfile.ts` | Calcula VPOC, Value Area, HVN/LVN |
-| **Footprint** | `ofa/footprint.ts` | Analisa Bid/Ask por candle |
-| **Imbalance Detector** | `ofa/imbalanceDetector.ts` | Detecta Stacked Imbalances (300%+) |
-| **Absorption Detector** | `ofa/absorptionDetector.ts` | Identifica acumulação/distribuição |
+| Módulo | Função |
+|--------|--------|
+| **Smart Money Filter** | Filtra trades por tamanho ($500-$100k+) |
+| **Volume Profile** | VPOC, Value Area, HVN/LVN |
+| **Footprint** | Analisa Bid/Ask por candle |
+| **Imbalance Detector** | Stacked Imbalances (300%+) |
+| **Absorption Detector** | Acumulação/Distribuição |
 
 ### Sistema de Scoring
 
 ```
-LONG Points / SHORT Points
-
-Smart Money Bias:    25 pts (BULLISH/BEARISH)
-Imbalance Dominance: 30 pts (BUY/SELL)
-Stacked Imbalance:   15 pts (bônus se 3+ consecutivos)
-Volume Profile:      20 pts (ABOVE/INSIDE/BELOW VA)
-Absorption:          10 pts (ACCUMULATION/DISTRIBUTION)
-Trend + Momentum:    15 pts
-
 Mínimo para sinal: 40 pts (coleta) ou 75 pts (produção)
-```
 
----
-
-## 📊 Machine Learning
-
-### Features Normalizadas (0-1)
-
-| Feature | Valor | Significado |
-|---------|-------|-------------|
-| `f_smart_money` | -1 a 1 | BEARISH/NEUTRAL/BULLISH |
-| `f_price_context` | 0-1 | BELOW/INSIDE/ABOVE VA |
-| `f_imbalance` | 0-1 | Força das imbalances |
-| `f_absorption` | 0-1 | Força da absorção |
-| `f_trend` | 0-1 | Tendência normalizada |
-| `f_momentum` | 0-1 | Momentum normalizado |
-| `f_volume` | 0-1 | Volume ratio normalizado |
-
-### Databases
-
-```
-data/
-├── crypto_signals.json   # Sinais ativos (PENDING/WIN/LOSS)
-└── ml_training.json      # Dados validados para ML
-```
-
-### Exportação CSV
-
-```typescript
-cryptoDatabase.exportForML()
-// timestamp,symbol,result,score,f_smart_money,f_price_context,...
-```
-
----
-
-## 💰 Calculadora de Futures
-
-### Features
-- Cálculo de alavancagem baseado em risco (2%)
-- Preço limite sugerido (50% menos taxa)
-- Funding rate em tempo real da Binance
-- Win/Loss esperado com taxas incluídas
-- Risk:Reward ratio
-
-### Configuração Default
-```
-Banca: $1000
-Risco por trade: 2%
-Stop Loss: 1%
-Take Profit: 2%
-Taxas Maker: 0.02%
-Taxas Taker: 0.04%
+Smart Money Bias:    25 pts
+Imbalance Dominance: 30 pts
+Stacked Imbalance:   15 pts
+Volume Profile:      20 pts
+Absorption:          10 pts
 ```
 
 ---
@@ -102,128 +147,65 @@ Taxas Taker: 0.04%
 ## 🏗️ Arquitetura
 
 ```
-eos.s-iron.tech (AWS EC2 - t2.micro)
+AWS EC2 (54.232.17.9)
 │
-├── Frontend (Nginx + HTTPS)
-│   ├── React + Vite + TypeScript
-│   └── Dashboard de sinais
-│
-├── EOS Crypto Bot (PM2: eos-bot)
+├── eos-bot (PM2)           # EoS CRYPTO
 │   ├── src/
-│   │   ├── ofa/
-│   │   │   ├── smartMoneyFilter.ts
-│   │   │   ├── volumeProfile.ts
-│   │   │   ├── footprint.ts
-│   │   │   ├── imbalanceDetector.ts
-│   │   │   ├── absorptionDetector.ts
-│   │   │   └── index.ts
+│   │   ├── ofa/            # Módulos OFA
+│   │   ├── mlFilter.ts     # 🧠 Integração ML
 │   │   ├── trendingScanner.ts
-│   │   ├── leverageCalculator.ts
-│   │   ├── database.ts
+│   │   ├── sqliteDatabase.ts
 │   │   └── telegram.ts
-│   └── data/
-│       ├── crypto_signals.json
-│       └── ml_training.json
+│   └── data/eos.db         # SQLite
 │
-└── EOS IQ Bot (PM2: eos-iq)
-    └── src/
-        ├── index.ts (OFA + Telegram)
-        └── quotes.ts (120 frases Tolkien)
+├── eos-iq-bot (PM2)        # EoS IQ
+│   ├── src/
+│   │   ├── ofa/analyzer.ts
+│   │   ├── forexData.ts    # API gratuita
+│   │   └── telegram.ts
+│   └── data/eos-iq.db
+│
+├── eos-ml/                 # 🧠 Machine Learning
+│   ├── src/api_server.py   # API Flask
+│   └── models/             # GMM + XGBoost
+│
+└── Frontend (Nginx)        # https://eos.s-iron.tech
 ```
 
 ---
 
-## 📱 Telegram Bots
+## 📱 Telegram
 
-| Bot | Username | Função |
-|-----|----------|--------|
-| EOS Crypto | @EoS_Evilbot | Top 10 Trending + OFA |
-| EOS IQ | @EoS_IQbot | Forex OFA + Sinais Binárias |
-
-### Formato do Sinal
-
-```
-Sinal Palantir!
-
-2 oportunidade(s) detectada(s):
-
-*BTC* COMPRA
-Entry: $94523.00
-Stop: $93577.77 | Alvo: $96413.46
-Prob: 82% | 24h: +2.34%
-R:R = 2.0:1
-
-━━━━━ Binance Futures ━━━━━
-Banca: $1000 | Risco: 2%
-Alavancagem: 2x
-Limite: $94475.74 (50% menos taxa)
-WIN: +$39.84 | LOSS: -$20.16
-Taxa: $1.60 | Fund: 0.0100%
-Pague com BNB = -10% extra
-━━━━━━━━━━━━━━━━━━━━━━
-
-"Sou inevitavel."
-```
+| Bot | Username | Canal |
+|-----|----------|-------|
+| EoS CRYPTO | @EoS_Evilbot | Sinais Crypto |
+| EoS IQ | @EoS_iqBot | Sinais Forex |
 
 ---
 
-## 🚀 Deploy
+## � Deploy
 
-### Frontend
+### ML API (Flask)
 ```bash
-npm run build
-scp -r dist/* ec2-user@54.232.17.9:/var/www/eos/
+cd eos-ml
+.venv/Scripts/python src/api_server.py
 ```
 
-### EOS Crypto Bot
+### Crypto Bot
 ```bash
 cd eos-telegram-bot
 npm run build
-scp -r dist/* ec2-user@54.232.17.9:/home/ec2-user/eos-bot/dist/
-ssh ec2-user@54.232.17.9 "pm2 restart eos-bot"
+scp -i sirontech_key.pem -r dist/* ec2-user@54.232.17.9:/home/ec2-user/eos-bot/dist/
+ssh -i sirontech_key.pem ec2-user@54.232.17.9 "pm2 restart eos-bot"
 ```
 
-### EOS IQ Bot
+### IQ Bot
 ```bash
 cd eos-iq-bot
 npm run build
-scp -r dist/* ec2-user@54.232.17.9:/home/ec2-user/eos-iq-bot/dist/
-ssh ec2-user@54.232.17.9 "pm2 restart eos-iq"
+scp -i sirontech_key.pem -r dist/* ec2-user@54.232.17.9:/home/ec2-user/eos-iq-bot/dist/
+ssh -i sirontech_key.pem ec2-user@54.232.17.9 "pm2 restart eos-iq"
 ```
-
----
-
-## ⚙️ Variáveis de Ambiente
-
-### EOS Crypto Bot (.env)
-```
-TELEGRAM_BOT_TOKEN=xxx
-TELEGRAM_CHANNEL_ID=-100xxx
-API_SECRET=xxx
-DATABASE_PATH=./data/crypto_signals.json
-```
-
-### EOS IQ Bot (.env)
-```
-TELEGRAM_BOT_TOKEN=xxx
-TELEGRAM_ADMIN_ID=xxx
-TELEGRAM_CHANNEL_ID=-100xxx
-TWELVE_DATA_API_KEY=xxx
-```
-
----
-
-## 🎮 Modos de Operação
-
-### Modo Coleta (DATA_COLLECTION_MODE = true)
-- Threshold: 40%
-- Mais sinais, mais dados
-- Aviso no canal: "NÃO OPERE COM DINHEIRO REAL"
-
-### Modo Produção (DATA_COLLECTION_MODE = false)
-- Threshold: 75%
-- Sinais de alta qualidade
-- Para trading real
 
 ---
 
@@ -233,21 +215,28 @@ TWELVE_DATA_API_KEY=xxx
 - [x] Volume Profile (VPOC, VA)
 - [x] Stacked Imbalances
 - [x] Absorption Detection
-- [x] Footprint Simplificado
-- [x] ML Features Normalizadas
-- [x] Calculadora Futures
-- [ ] Testes Automatizados
+- [x] SQLite Database
+- [x] Validação automática WIN/LOSS
+- [x] API Forex gratuita
+- [x] Identificadores EoS CRYPTO / EoS IQ
+- [x] **Machine Learning v2.1**
+  - [x] Fractional Differentiation (Kaabar)
+  - [x] Triple Barrier Labeling
+  - [x] GMM Regime Detection
+  - [x] XGBoost Classifier
+  - [x] Integração com Bot (mlFilter.ts)
 - [ ] Dashboard Web para KPIs
-- [ ] Modelo ML com dados coletados
+- [ ] Deploy ML API no EC2
 
 ---
 
 ## 🔗 URLs
 
 - **Site:** https://eos.s-iron.tech
-- **Dashboard:** https://eos.s-iron.tech/dashboard
-- **Health:** https://eos.s-iron.tech/health
+- **EC2:** 54.232.17.9
 
 ---
 
 *"One Ring to rule them all"* - Powered by s-iron.tech
+
+*Última atualização: 31/12/2024*

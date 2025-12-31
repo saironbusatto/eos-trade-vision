@@ -3,6 +3,7 @@ import { sqliteDatabase } from "./sqliteDatabase";
 import { getRandomQuote } from "./quotes";
 import { calculatePosition, getFundingRate } from "./leverageCalculator";
 import { getMacroAnalysis, getMacroForDB } from "./macroAnalyzer";
+import { mlFilter } from "./mlFilter";
 
 // Default bankroll for calculations (user can override)
 const DEFAULT_BANKROLL = 1000; // $1000
@@ -132,6 +133,27 @@ export class TrendingScanner {
             const signal = await this.analyzeOFA(coin);
 
             if (signal && signal.score >= MIN_SCORE) {
+                // ML Filter: Check if signal should be executed
+                const mlResult = await mlFilter.shouldExecute({
+                    f_volume: signal.f_volume,
+                    f_momentum: signal.f_momentum,
+                    f_trend: signal.f_trend,
+                    f_price_context: signal.f_price_context,
+                    f_smart_money: signal.f_smart_money,
+                    f_imbalance: signal.f_imbalance,
+                    f_absorption: signal.f_absorption,
+                    score: signal.score,
+                });
+
+                // Log ML decision
+                console.log(`[ML] ${signal.symbol}: ${mlResult.reason}`);
+
+                // Skip if ML rejects (only in production mode)
+                if (!DATA_COLLECTION_MODE && !mlResult.should_execute) {
+                    console.log(`[ML] ${signal.symbol} rejeitado pelo filtro ML`);
+                    continue;
+                }
+
                 // Save to database with stop/target and get ID
                 const signalId = sqliteDatabase.insertSignal({
                     symbol: signal.symbol,
@@ -498,7 +520,7 @@ Resultado: ${profitStr}
     private async sendConsolidatedSignal(signals: OFASignal[]): Promise<void> {
         const quote = getRandomQuote();
 
-        let message = `*Sinal Palantir!*\n\n`;
+        let message = `*Novo Sinal!*\n\n`;
         message += `${signals.length} oportunidade(s) detectada(s):\n\n`;
 
         for (const s of signals) {

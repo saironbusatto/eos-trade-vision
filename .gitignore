@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Machine Learning - ignorar apenas dados e modelos
+eos-ml/data/
+eos-ml/models/
+eos-ml/.venv/
+
+*.pem
+*.db

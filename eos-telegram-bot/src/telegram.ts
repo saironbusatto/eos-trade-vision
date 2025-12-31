@@ -53,7 +53,7 @@ class TelegramService {
     async sendSignal(signal: TradingSignal): Promise<boolean> {
         const actionText = signal.action === "BUY" ? "COMPRA" : "VENDA";
 
-        let message = `*Sinal Palantir!*
+        let message = `*Novo Sinal!*
 
 Par: ${signal.symbol}
 Direção: ${actionText}
@@ -108,7 +108,8 @@ Preço: $${signal.price.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
     }
 
     async sendBreakoutAlert(message: string): Promise<boolean> {
-        return this.sendMessage(message);
+        const prefixedMessage = `🔮 *EoS CRYPTO*\n\n${message}`;
+        return this.sendMessage(prefixedMessage);
     }
 }
 
