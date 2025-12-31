@@ -1,227 +1,114 @@
-# EOS Crypto Bot - Documentação Técnica
+# EoS CRYPTO Bot 🔮
 
-## Order Flow Analysis (OFA)
-
-### Conceito
-
-OFA é uma metodologia de análise que vai além do preço e volume tradicionais. Ela analisa:
-- **Quem** está comprando/vendendo (varejo vs institucional)
-- **Onde** o preço está em relação às zonas de volume
-- **Como** os participantes estão agindo (agressivos vs passivos)
-
-### Módulos
-
-#### 1. Smart Money Filter (`smartMoneyFilter.ts`)
-
-**O que faz:** Classifica trades por tamanho para separar varejo de institucionais.
-
-**Thresholds:**
-- `< $500` = IGNORE (ruído)
-- `$500-$5k` = RETAIL (peso 1x)
-- `$5k-$25k` = SMART MONEY (peso 3x)
-- `> $100k` = WHALE (peso 10x)
-
-**Saída:**
-- `smartMoneyBias`: BULLISH/BEARISH/NEUTRAL
-- `divergence`: true se varejo e smart money divergem
-- `whaleTrades`: quantidade de trades whale
+Sistema de trading algorítmico com **Order Flow Analysis (OFA) real** + **Machine Learning Ensemble** para criptomoedas.
 
 ---
 
-#### 2. Volume Profile (`volumeProfile.ts`)
+## 🎯 Filosofia
 
-**O que faz:** Calcula a distribuição de volume por preço (não por tempo).
+> *"O que o Order Flow fornece ao trader é a capacidade de ficar fora do mercado quando não há razão para negociar."* — **Michael Valtos**
 
-**Conceitos:**
-- **VPOC** (Volume Point of Control): Preço com mais volume
-- **Value Area** (68.2%): Onde 68.2% do volume foi negociado
-- **HVN** (High Volume Node): Zonas de suporte/resistência forte
-- **LVN** (Low Volume Node): Zonas de rápido movimento
-
-**Contexto:**
-- `ABOVE_VA`: Preço acima da área de valor = bullish
-- `INSIDE_VA`: Preço dentro = consolidação
-- `BELOW_VA`: Preço abaixo = bearish
+O modelo **não prevê preços**. Ele **filtra sinais ruins** usando Order Flow institucional.
 
 ---
 
-#### 3. Footprint (`footprint.ts`)
+## 📊 Por que OFA Real Funciona em Crypto
 
-**O que faz:** Agrupa trades por candle separando Bid (venda agressiva) vs Ask (compra agressiva).
+| Característica | Crypto (Binance) | Vantagem |
+|----------------|------------------|----------|
+| **Mercado** | Centralizado | Order Book público |
+| **Order Book** | ✅ API Binance | Vemos TODAS as ordens |
+| **Trades** | ✅ Tempo real | Buyer/Seller ID |
+| **Volume** | ✅ Real (USD) | Podemos filtrar "Smart Money" |
+| **Level 2** | ✅ Depth data | Imbalances, Absorption |
 
-**Métricas:**
-- `bidVolume`: Volume vendido (vendedor agrediu)
-- `askVolume`: Volume comprado (comprador agrediu)
-- `delta`: Ask - Bid (quem está ganhando)
-- `percentBuy`: % do volume que foi compra
+### Vantagem Competitiva
 
----
+Porque temos acesso ao **Order Book real**, podemos calcular:
 
-#### 4. Imbalance Detector (`imbalanceDetector.ts`)
-
-**O que faz:** Detecta desequilíbrios de volume entre compradores e vendedores.
-
-**Conceitos:**
-- **Imbalance**: Volume de um lado 300%+ maior que o outro
-- **Stacked Imbalance**: 3 ou mais imbalances consecutivos = sinal MUITO forte
-
-**Comparação Diagonal (Trader Dale):**
-- Compara Ask[i] vs Bid[i-1] (diagonal)
-- Se ratio > 3.0 = imbalance detectado
+1. **Smart Money Filter** - Filtra trades por tamanho ($500-$100k+)
+2. **Stacked Imbalances** - Detecta ordens agressivas (300%+ ratio)
+3. **Absorption** - Identifica quando instituições estão defendendo níveis
+4. **Delta** - Diferença entre compras e vendas agressivas
 
 ---
 
-#### 5. Absorption Detector (`absorptionDetector.ts`)
+## 🧠 Machine Learning v3.0
 
-**O que faz:** Detecta quando grande volume não move o preço.
-
-**Conceito:**
-- Alto volume + baixo movimento = instituição absorvendo
-- **ACCUMULATION**: Compra absorvida (bullish)
-- **DISTRIBUTION**: Venda absorvida (bearish)
-
-**Critérios:**
-- Volume > 2x média
-- Movimento de preço < 0.2%
-
----
-
-## Machine Learning
-
-### Features Normalizadas
-
-Cada feature foi normalizada para 0-1 (ou -1 a 1) para facilitar ML:
-
-| Feature | Range | Cálculo |
-|---------|-------|---------|
-| `f_smart_money` | -1 a 1 | BULLISH=1, NEUTRAL=0, BEARISH=-1 |
-| `f_price_context` | 0 a 1 | BELOW=0, INSIDE=0.5, ABOVE=1 |
-| `f_imbalance` | 0 a 1 | score/100 (capped) |
-| `f_absorption` | 0 a 1 | score/100 (capped) |
-| `f_trend` | 0 a 1 | (trend+1)/2 |
-| `f_momentum` | 0 a 1 | (momentum+1)/2 |
-| `f_volume` | 0 a 1 | volumeRatio/5 (capped) |
-
-### Dados Coletados
-
-```json
-{
-  "result": "WIN",
-  "score": 75,
-  "f_smart_money": 0.7,
-  "f_price_context": 0.8,
-  "f_imbalance": 0.6,
-  "f_absorption": 0.3,
-  "f_trend": 0.65,
-  "f_momentum": 0.55,
-  "f_volume": 0.4,
-  "time_to_result_min": 45
-}
-```
-
-### Análise Futura
-
-Com ~100 trades poderemos:
-1. Calcular win rate por faixa de score
-2. Identificar features mais importantes
-3. Ajustar pesos do scoring
-
-Com ~500+ trades:
-1. Treinar modelo de regressão
-2. Otimizar thresholds
-3. Backtesting
-
----
-
-## Calculadora de Futures
-
-### Conceito
-
-Calcula posição ideal baseada em:
-- Banca fixa ($1000)
-- Risco por trade (2%)
-- Stop loss (1%)
-- Take profit (2%)
-
-### Fórmulas
+### Ensemble de 4 Modelos
 
 ```
-riskAmount = bankroll × riskPercent
-positionSize = riskAmount / stopPercent
-leverage = positionSize / bankroll
+Sinal OFA → GMM (Regime) → Ensemble (4 modelos) → Threshold 70% → Executar/Rejeitar
 ```
 
-### Taxas Binance
+| Modelo | Peso | Função |
+|--------|------|--------|
+| **XGBoost** | 2x | Gradient boosting otimizado |
+| **LightGBM** | 2x | Versão rápida |
+| **Random Forest** | 1x | Robusto a overfitting |
+| **Gradient Boosting** | 1x | Sklearn clássico |
 
-| Tipo | Taxa |
-|------|------|
-| Maker (limite) | 0.02% |
-| Taker (mercado) | 0.04% |
-| Desconto BNB | -10% |
+### Features (Order Flow Real)
 
-### Funding Rate
+| Feature | Fonte | Descrição |
+|---------|-------|-----------|
+| `f_smart_money` | Order Book | Bias institucional (grandes trades) |
+| `f_imbalance` | Footprint | Força dos imbalances |
+| `f_absorption` | Delta/Volume | Ordens passivas absorvendo |
+| `f_price_context` | VWAP | Distância do preço justo |
+| `f_trend` | EMA | Tendência |
+| `f_momentum` | ROC | Velocidade |
+| `f_volume` | Volume | Volume ratio |
 
-Buscado em tempo real da API:
-```
-GET https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&limit=1
-```
+### Decisões Técnicas
 
-Se funding > 0.03% = aviso ⚠️
+| Conceito | Fonte | Por quê? |
+|----------|-------|----------|
+| **Fractional Differentiation** | Kaabar | Estacionariedade sem perder memória |
+| **Triple Barrier Labeling** | López de Prado | WIN=TP, LOSS=SL/Timeout |
+| **TimeSeriesSplit** | Scikit-learn | Evitar look-ahead bias |
+| **GMM Regime Detection** | Ruiz & Chan | Pausar em regimes ruins |
+| **Ensemble Voting** | ML Best Practices | Reduzir variância |
 
 ---
 
-## Fluxo de Execução
+## 📈 Métricas Atuais
+
+| Score | Trades | Win Rate | Sharpe | Max DD |
+|-------|--------|----------|--------|--------|
+| 40+ | 2166 | 50.6% | 0.01 | 17.0% |
+| 70+ | 591 | 51.3% | 0.53 | 9.8% |
+
+**Com ML Filter (threshold 70%):** Precision ~60%
+
+---
+
+## 🏗️ Arquitetura
 
 ```
-1. TrendingScanner.scan() [cada 10 min]
-   └─> Busca top 10 coins por volume (Binance)
-
-2. Para cada coin:
-   └─> analyzeOFA(coin)
-       ├─> getSmartMoneyDelta()
-       ├─> calculateVolumeProfile()
-       ├─> analyzeImbalances()
-       └─> analyzeAbsorption()
-
-3. Se score >= MIN_SCORE:
-   ├─> Salva em SQLite (signals table)
-   └─> Envia para Telegram (🔮 EoS CRYPTO)
-
-4. Validation loop [cada 5 min]
-   ├─> Busca sinais PENDING
-   ├─> Verifica se bateu stop/target
-   ├─> Atualiza resultado (WIN/LOSS)
-   └─> Salva em ml_training table
+eos-telegram-bot/
+├── src/
+│   ├── ofa/
+│   │   ├── smartMoneyFilter.ts   # Filtra trades grandes
+│   │   ├── volumeProfile.ts      # VPOC, Value Area
+│   │   ├── footprint.ts          # Bid/Ask analysis
+│   │   ├── imbalanceDetector.ts  # Stacked imbalances
+│   │   └── absorptionDetector.ts # Absorção passiva
+│   ├── mlFilter.ts               # 🧠 Integração ML
+│   ├── trendingScanner.ts        # Scanner principal
+│   └── sqliteDatabase.ts         # Persistência
+└── data/eos.db                   # SQLite
 ```
 
 ---
 
-## Configuração
+## 📚 Referências
 
-### Variáveis de Ambiente
-
-```
-TELEGRAM_BOT_TOKEN=xxx
-TELEGRAM_CHANNEL_ID=-100xxx
-DATABASE_PATH=./data/eos.db
-```
-
-### Constantes
-
-```typescript
-// trendingScanner.ts
-DATA_COLLECTION_MODE = true;  // true=40%, false=75%
-MIN_SCORE = 40;               // Mínimo para enviar sinal
-SCAN_INTERVAL = 10 * 60 * 1000;  // 10 minutos
-VALIDATION_INTERVAL = 5 * 60 * 1000;  // 5 minutos
-
-// leverageCalculator.ts
-DEFAULT_BANKROLL = 1000;
-RISK_PERCENT = 2;
-MAKER_FEE = 0.0002;
-TAKER_FEE = 0.0004;
-```
+- **Michael Valtos** - Order Flow Philosophy
+- **López de Prado** - Triple Barrier, Meta-Labeling
+- **Kaabar** - Fractional Differentiation
+- **Ruiz & Chan** - Regime Detection
 
 ---
 
-*Eye of Sauron - Order Flow Analysis*
+*Powered by s-iron.tech | Estratégia v3.0*

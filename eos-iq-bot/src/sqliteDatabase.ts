@@ -88,6 +88,8 @@ function initSchema(): void {
             vpoc_migration TEXT,
             reversal_sequence INTEGER,
             
+            strategy_version TEXT DEFAULT 'v2.0',
+            
             hour_utc INTEGER,
             day_of_week INTEGER
         );
@@ -150,8 +152,8 @@ export const sqliteDatabase = {
                 pair, direction, entry_price, score, expiration_min,
                 delta, delta_cumulative, absorption_detected, divergence_detected,
                 stacked_imbalances, vpoc_migration, reversal_sequence,
-                hour_utc, day_of_week
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                hour_utc, day_of_week, strategy_version
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'v3.0')
         `);
 
         const result = stmt.run(
@@ -165,7 +167,7 @@ export const sqliteDatabase = {
         );
 
         const id = result.lastInsertRowid as number;
-        console.log(`[SQLite] Signal #${id} saved: ${signal.pair} ${signal.direction} @ ${signal.entry_price}`);
+        console.log(`[SQLite] Signal #${id} saved: ${signal.pair} ${signal.direction} @ ${signal.entry_price} (v3.0)`);
         return id;
     },
 
@@ -220,10 +222,12 @@ export const sqliteDatabase = {
         console.log(`[SQLite] Signal #${id} closed: ${result}`);
     },
 
+    // Get statistics (v3.0 only - nova estratégia)
     getStats(): { total: number; wins: number; losses: number; pending: number; win_rate: number } {
         const total = db.prepare('SELECT COUNT(*) as c FROM signals').get() as { c: number };
-        const wins = db.prepare("SELECT COUNT(*) as c FROM signals WHERE result = 'WIN'").get() as { c: number };
-        const losses = db.prepare("SELECT COUNT(*) as c FROM signals WHERE result = 'LOSS'").get() as { c: number };
+        // Wins e losses apenas da v3.0 (nova estratégia)
+        const wins = db.prepare("SELECT COUNT(*) as c FROM signals WHERE result = 'WIN' AND strategy_version = 'v3.0'").get() as { c: number };
+        const losses = db.prepare("SELECT COUNT(*) as c FROM signals WHERE result = 'LOSS' AND strategy_version = 'v3.0'").get() as { c: number };
         const pending = db.prepare("SELECT COUNT(*) as c FROM signals WHERE result = 'PENDING'").get() as { c: number };
 
         const closed = wins.c + losses.c;

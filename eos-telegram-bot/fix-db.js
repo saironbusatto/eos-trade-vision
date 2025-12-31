@@ -1,30 +1,39 @@
+// fix-db.js - Diagnostica e corrige o banco de dados
 const Database = require('better-sqlite3');
 const db = new Database('./data/eos.db');
 
-const columns = [
-    { name: 'macro_confidence', type: 'REAL DEFAULT 0' },
-    { name: 'macro_sentiment', type: 'TEXT' },
-    { name: 'fear_greed', type: 'INTEGER' },
-    { name: 'trade_recommendation', type: 'TEXT' },
-    { name: 'sp500_trend', type: 'TEXT' },
-    { name: 'fed_stance', type: 'TEXT' },
-];
+console.log('=== Diagnóstico do Banco ===');
 
-for (const col of columns) {
+// Verificar colunas
+const columns = db.prepare('PRAGMA table_info(signals)').all();
+console.log('Colunas na tabela signals:');
+columns.forEach(c => console.log(`  - ${c.name}`));
+
+const hasStrategyVersion = columns.some(c => c.name === 'strategy_version');
+
+if (!hasStrategyVersion) {
+    console.log('\n❌ Coluna strategy_version NÃO existe!');
+    console.log('Adicionando...');
     try {
-        db.exec(`ALTER TABLE ml_training ADD COLUMN ${col.name} ${col.type}`);
-        console.log(`✅ Coluna '${col.name}' adicionada!`);
+        db.exec("ALTER TABLE signals ADD COLUMN strategy_version TEXT DEFAULT 'v2.0'");
+        console.log('✅ Coluna adicionada!');
     } catch (e) {
-        if (e.message.includes('duplicate column')) {
-            console.log(`ℹ️ Coluna '${col.name}' já existe`);
-        } else {
-            console.log(`❌ Erro em '${col.name}':`, e.message);
-        }
+        console.log('Erro:', e.message);
     }
+} else {
+    console.log('\n✅ Coluna strategy_version existe');
 }
 
-// Verificar estrutura
-const cols = db.prepare("PRAGMA table_info(ml_training)").all();
-console.log('\n📋 Colunas da tabela ml_training:');
-cols.forEach(c => console.log(`  - ${c.name}: ${c.type || 'N/A'}`));
+// Contar sinais
+const total = db.prepare('SELECT COUNT(*) as c FROM signals').get();
+console.log(`\nTotal de sinais: ${total.c}`);
 
+// Tentar a query que está falhando
+try {
+    const stats = db.prepare("SELECT COUNT(*) as c FROM signals WHERE result = 'WIN' AND strategy_version = 'v3.0'").get();
+    console.log(`Wins v3.0: ${stats.c}`);
+} catch (e) {
+    console.log('Erro na query:', e.message);
+}
+
+console.log('\n=== Fim do Diagnóstico ===');
