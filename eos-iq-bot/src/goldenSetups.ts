@@ -60,7 +60,7 @@ export function getCurrentGoldenSetups(): GoldenSetup[] {
 /**
  * Formata mensagem para setup golden
  */
-export function formatGoldenMessage(pair: string, direction: 'CALL' | 'PUT', price: number, score: number, setup: GoldenSetup): string {
+export function formatGoldenMessage(pair: string, direction: 'CALL' | 'PUT', price: number, score: number, setup: GoldenSetup, goldenId: number): string {
     const acao = direction === 'CALL' ? '📈 COMPRA' : '📉 VENDA';
     const hourBRT = (setup.hourUTC - 3 + 24) % 24;
 
@@ -74,7 +74,7 @@ export function formatGoldenMessage(pair: string, direction: 'CALL' | 'PUT', pri
         nazgulMessage = `\n\n🔮 _"Um Anel para a todos governar..."_`;
     }
 
-    return `🎯 *EOS IQ - ALTA CONFLUÊNCIA*
+    return `🎯 *EOS IQ - ALTA CONFLUÊNCIA* #${goldenId}
 
 Par: *${pair}*
 Direção: *${acao}*

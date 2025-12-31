@@ -264,6 +264,12 @@ export const sqliteDatabase = {
         };
     },
 
+    // Retorna o próximo ID de sinal golden (contador separado)
+    getNextGoldenId(): number {
+        const result = db.prepare('SELECT COUNT(*) as c FROM signals WHERE is_golden = 1').get() as { c: number };
+        return result.c + 1;
+    },
+
     exportMLData(): string {
         const records = db.prepare('SELECT * FROM ml_training ORDER BY id').all() as MLTrainingRecord[];
         if (records.length === 0) return '';

@@ -109,11 +109,12 @@ async function generateSignal(pair: string, indicators: OFAIndicators) {
 
     if (goldenSetup) {
         // GOLDEN SETUP - Envia para Telegram!
-        const message = formatGoldenMessage(pair, direction, quote.price, indicators.score, goldenSetup);
-        const sent = await telegram.sendMessage(message);
+        const goldenId = sqliteDatabase.getNextGoldenId();
+        const message = formatGoldenMessage(pair, direction, quote.price, indicators.score, goldenSetup, goldenId);
+        const sent = await telegram.sendGoldenMessage(message);
 
         if (sent) {
-            console.log(`[Engine] 🎯 GOLDEN SIGNAL #${signalId} enviado: ${pair} ${direction} (${goldenSetup.winRate}% WR)`);
+            console.log(`[Engine] 🎯 GOLDEN #${goldenId} enviado: ${pair} ${direction} (${goldenSetup.winRate}% WR)`);
         }
     } else {
         // Sinal normal - apenas log, não envia para Telegram
@@ -142,7 +143,7 @@ async function validatePendingSignals() {
             // Envia resultado ao Telegram APENAS se for sinal GOLDEN
             if (signal.is_golden) {
                 const emoji = result === 'WIN' ? '✅' : '❌';
-                await telegram.sendMessage(`🎯 *#${signal.id}* ${signal.pair} - ${emoji} ${result}`);
+                await telegram.sendGoldenMessage(`🎯 *#${signal.id}* ${signal.pair} - ${emoji} ${result}`);
             }
 
         } catch (error) {
