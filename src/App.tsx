@@ -6,8 +6,11 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { LanguageProvider } from "@/i18n";
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
+import Analytics from "./pages/Analytics";
+import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 import { ChatWidget } from "./components/ChatWidget";
+import { AuthGuard } from "./components/auth/AuthGuard";
 
 const queryClient = new QueryClient();
 
@@ -20,7 +23,17 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Index />} />
-            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/dashboard" element={
+              <AuthGuard>
+                <Dashboard />
+              </AuthGuard>
+            } />
+            <Route path="/analytics" element={
+              <AuthGuard>
+                <Analytics />
+              </AuthGuard>
+            } />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
@@ -32,3 +45,5 @@ const App = () => (
 );
 
 export default App;
+
+

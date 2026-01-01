@@ -140,10 +140,17 @@ async function validatePendingSignals() {
             sqliteDatabase.closeSignal(signal.id, quote.price, result);
             console.log(`[Engine] Sinal #${signal.id} fechado: ${result}`);
 
-            // Envia resultado ao Telegram APENAS se for sinal GOLDEN
+            // Envia resultado ao Telegram se for sinal GOLDEN
             if (signal.is_golden) {
+                const goldenStats = sqliteDatabase.getGoldenStats();
+                const goldenId = goldenStats.total; // ID do sinal golden
                 const emoji = result === 'WIN' ? '✅' : '❌';
-                await telegram.sendGoldenMessage(`🎯 *#${signal.id}* ${signal.pair} - ${emoji} ${result}`);
+                const message = `🎯 *GOLDEN #${goldenId}* ${signal.pair}
+
+${emoji} *${result}*
+
+📊 Golden Stats: ${goldenStats.wins}W / ${goldenStats.losses}L (${goldenStats.win_rate.toFixed(1)}%)`;
+                await telegram.sendGoldenMessage(message);
             }
 
         } catch (error) {
