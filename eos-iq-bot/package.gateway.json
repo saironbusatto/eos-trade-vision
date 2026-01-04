@@ -1,0 +1,14 @@
+{
+    "name": "eos-gateway-server",
+    "version": "1.0.0",
+    "description": "EoS Gateway API Server",
+    "main": "gateway-server.js",
+    "scripts": {
+        "start": "node gateway-server.js"
+    },
+    "dependencies": {
+        "express": "^4.18.2",
+        "cors": "^2.8.5",
+        "better-sqlite3": "^9.4.3"
+    }
+}

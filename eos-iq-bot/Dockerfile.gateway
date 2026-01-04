@@ -1,0 +1,33 @@
+FROM node:20-slim
+
+WORKDIR /app
+
+# Instalar dependências de build para better-sqlite3 e utilitários
+# python3, make, g++ são essenciais para node-gyp
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    make \
+    g++ \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copiar package.json dedicado e instalar dependências
+COPY package.gateway.json ./package.json
+
+# Instalar dependências (incluindo nativas)
+RUN npm install --omit=dev
+
+# Copiar arquivos necessários
+COPY gateway-server.js ./
+
+# Dados serão montados via volume
+
+# Porta da API
+EXPOSE 3001
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3001/api/gateway/status || exit 1
+
+# Executar
+CMD ["node", "gateway-server.js"]

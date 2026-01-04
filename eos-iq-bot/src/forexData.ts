@@ -1,5 +1,8 @@
-// Forex data provider using free APIs (no API key required)
-// Uses open.er-api.com as primary, frankfurter.app as fallback
+// Forex data provider using IBKR as primary, free APIs as fallback
+// Primary: @stoqey/ib (IBKR Gateway)
+// Fallback: open.er-api.com, frankfurter.app
+
+import { ibkrData } from './ibkrData';
 
 export interface TimeSeries {
     datetime: string;
@@ -14,6 +17,7 @@ interface ForexQuote {
     pair: string;
     price: number;
     timestamp: number;
+    source?: 'ibkr' | 'openER' | 'frankfurter';
 }
 
 class ForexDataService {
@@ -21,6 +25,8 @@ class ForexDataService {
     private priceHistory: Map<string, TimeSeries[]> = new Map();
     private CACHE_TTL = 60 * 1000; // 1 minute cache
     private MAX_HISTORY = 60; // Keep 60 data points
+    private ibkrEnabled = true; // Flag para habilitar/desabilitar IBKR
+    private ibkrInitialized = false;
 
     // Convert pair format: "EUR/USD" -> { from: "EUR", to: "USD" }
     private parsePair(pair: string): { from: string; to: string } {
@@ -28,27 +34,77 @@ class ForexDataService {
         return { from, to };
     }
 
+    /**
+     * Inicializa conexão com IBKR (chamado uma vez no startup)
+     */
+    async initIBKR(): Promise<boolean> {
+        if (this.ibkrInitialized) return ibkrData.isConnected();
+
+        console.log('[ForexData] Tentando conectar ao IBKR Gateway...');
+        const connected = await ibkrData.connect();
+        this.ibkrInitialized = true;
+
+        if (connected) {
+            console.log('[ForexData] IBKR conectado! Subscrevendo pares principais...');
+            // Subscreve pares mais usados
+            const mainPairs = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD'];
+            mainPairs.forEach(pair => ibkrData.subscribePair(pair));
+            return true;
+        } else {
+            console.log('[ForexData] IBKR não disponível. Usando APIs gratuitas.');
+            this.ibkrEnabled = false;
+            return false;
+        }
+    }
+
     async getPrice(pair: string): Promise<ForexQuote | null> {
+        // Tenta IBKR primeiro se habilitado
+        if (this.ibkrEnabled && ibkrData.isConnected()) {
+            const ibkrPrice = ibkrData.getPrice(pair);
+            if (ibkrPrice !== null && ibkrData.hasValidData(pair, 120)) {
+                const quote = this.quotes.get(pair);
+                this.updateHistory(pair, ibkrPrice);
+                return {
+                    pair,
+                    price: ibkrPrice,
+                    timestamp: quote?.timestamp || Date.now(),
+                    source: 'ibkr'
+                };
+            }
+            // Se não tem dados ainda, subscreve o par
+            if (!ibkrData.getQuote(pair)) {
+                ibkrData.subscribePair(pair);
+            }
+        }
+
+        // Fallback: APIs gratuitas
         const cached = this.cache.get(pair);
         if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
-            return { pair, price: cached.price, timestamp: cached.timestamp };
+            return { pair, price: cached.price, timestamp: cached.timestamp, source: 'openER' };
         }
 
         // Try primary API
         let price = await this.fetchFromOpenER(pair);
+        let source: 'openER' | 'frankfurter' = 'openER';
 
         // Fallback to frankfurter if primary fails
         if (price === null) {
             price = await this.fetchFromFrankfurter(pair);
+            source = 'frankfurter';
         }
 
         if (price !== null) {
             this.cache.set(pair, { price, timestamp: Date.now() });
             this.updateHistory(pair, price);
-            return { pair, price, timestamp: Date.now() };
+            return { pair, price, timestamp: Date.now(), source };
         }
 
         return null;
+    }
+
+    // Getter para quotes do IBKR
+    private get quotes() {
+        return new Map<string, { timestamp: number }>();
     }
 
     // Método para obter séries temporais simuladas

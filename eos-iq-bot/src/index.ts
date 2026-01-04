@@ -189,6 +189,15 @@ async function main() {
     }
 
     // Test TwelveData connection
+    // Tenta inicializar IBKR primeiro (dados em tempo real)
+    console.log('[Engine] Inicializando conexão IBKR...');
+    const ibkrConnected = await forexData.initIBKR();
+    if (ibkrConnected) {
+        console.log('✅ IBKR conectado! Usando dados em tempo real.');
+    } else {
+        console.log('⚠️ IBKR não disponível. Usando APIs gratuitas como fallback.');
+    }
+
     const connected = await forexData.testConnection();
     if (!connected) {
         console.warn('[Engine] Falha Twelve Data - continuando apenas com sinais manuais');

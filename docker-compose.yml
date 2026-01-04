@@ -1,0 +1,122 @@
+version: '3.8'
+
+services:
+  # ===========================================
+  # Website - Nginx servindo frontend estático
+  # ===========================================
+  website:
+    image: nginx:alpine
+    container_name: eos-website
+    volumes:
+      - ./dist:/usr/share/nginx/html:ro
+      - ./nginx-docker.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: always
+    mem_limit: 64m
+    networks:
+      - eos-network
+    labels:
+      - "com.eos.service=website"
+
+  # ===========================================
+  # Gateway Server - API REST
+  # ===========================================
+  gateway-server:
+    build:
+      context: ./eos-iq-bot
+      dockerfile: Dockerfile.gateway
+    container_name: eos-gateway
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./eos-iq-bot/data:/app/data
+    environment:
+      - NODE_ENV=production
+    restart: always
+    mem_limit: 128m
+    depends_on:
+      - ibgateway
+    networks:
+      - eos-network
+    labels:
+      - "com.eos.service=gateway"
+
+  # ===========================================
+  # Forex Bot (eos-iq-bot)
+  # ===========================================
+  eos-iq-bot:
+    build:
+      context: ./eos-iq-bot
+      dockerfile: Dockerfile
+    container_name: eos-forex-bot
+    env_file:
+      - ./eos-iq-bot/.env
+    volumes:
+      - ./eos-iq-bot/data:/app/data
+    restart: always
+    mem_limit: 256m
+    depends_on:
+      - ibgateway
+      - gateway-server
+    networks:
+      - eos-network
+    labels:
+      - "com.eos.service=forex-bot"
+
+  # ===========================================
+  # Crypto Bot (eos-telegram-bot)
+  # ===========================================
+  eos-telegram-bot:
+    build:
+      context: ./eos-telegram-bot
+      dockerfile: Dockerfile
+    container_name: eos-crypto-bot
+    env_file:
+      - ./eos-telegram-bot/.env
+    volumes:
+      - ./eos-telegram-bot/data:/app/data
+    restart: always
+    mem_limit: 256m
+    networks:
+      - eos-network
+    labels:
+      - "com.eos.service=crypto-bot"
+
+  # ===========================================
+  # IB Gateway - Interactive Brokers
+  # ===========================================
+  ibgateway:
+    image: ghcr.io/gnzsnz/ib-gateway:latest
+    container_name: eos-ibgateway
+    ports:
+      - "4001:4001"
+      - "5900:5900"
+    environment:
+      - TWSUSERID=${IBKR_USER:-saironb}
+      - TWSPASSWORD=${IBKR_PASS}
+      - TRADING_MODE=live
+      - VNC_SERVER_PASSWORD=${VNC_PASSWORD:-eos123}
+      - TWS_SETTINGS_PATH=/home/ibgateway/Jts
+      - RELOGIN_AFTER_2FA_TIMEOUT=120
+    volumes:
+      - ibgateway-data:/home/ibgateway/Jts
+    restart: always
+    mem_limit: 512m
+    networks:
+      - eos-network
+    labels:
+      - "com.eos.service=ibgateway"
+
+# ===========================================
+# Rede compartilhada
+# ===========================================
+networks:
+  eos-network:
+    driver: bridge
+    name: eos-network
+
+# ===========================================
+# Volumes persistentes
+# ===========================================
+volumes:
+  ibgateway-data:
+    name: eos-ibgateway-data
