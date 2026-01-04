@@ -1,15 +1,13 @@
-FROM node:20-slim
+FROM node:20-alpine
 
 WORKDIR /app
 
-# Instalar dependências de build para better-sqlite3 e utilitários
-# python3, make, g++ são essenciais para node-gyp
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Instalar dependências de build e docker-cli
+RUN apk add --no-cache \
     python3 \
     make \
     g++ \
-    wget \
-    && rm -rf /var/lib/apt/lists/*
+    docker-cli
 
 # Copiar package.json dedicado e instalar dependências
 COPY package.gateway.json ./package.json

@@ -17,7 +17,7 @@ app.use(express.json());
 app.get('/api/gateway/status', async (req, res) => {
     try {
         const { stdout } = await execAsync(
-            'sudo docker ps --filter "name=ibgateway" --format "{{.ID}}|{{.Status}}|{{.Ports}}"'
+            'docker ps --filter "name=eos-ibgateway" --format "{{.ID}}|{{.Status}}|{{.Ports}}"'
         );
 
         if (!stdout.trim()) {
@@ -30,7 +30,7 @@ app.get('/api/gateway/status', async (req, res) => {
         let lastLog = '';
         try {
             const { stdout: logOutput } = await execAsync(
-                'sudo docker logs --tail 10 ibgateway 2>&1 | grep -E "IBC:|Login|Challenge|connect|error" | tail -3'
+                'docker logs --tail 10 eos-ibgateway 2>&1 | grep -E "IBC:|Login|Challenge|connect|error" | tail -3'
             );
             lastLog = logOutput.trim();
         } catch (e) { }
@@ -52,7 +52,7 @@ app.get('/api/gateway/logs', async (req, res) => {
     try {
         const lines = Number(req.query.lines) || 30;
         const { stdout } = await execAsync(
-            `sudo docker logs --tail ${lines} ibgateway 2>&1`
+            `docker logs --tail ${lines} eos-ibgateway 2>&1`
         );
 
         const allLines = stdout.split('\n');
@@ -77,7 +77,7 @@ app.get('/api/gateway/logs', async (req, res) => {
 // POST /api/gateway/restart
 app.post('/api/gateway/restart', async (req, res) => {
     try {
-        await execAsync('sudo docker restart ibgateway');
+        await execAsync('docker restart eos-ibgateway');
         res.json({ success: true, message: 'Container reiniciando...' });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -87,7 +87,7 @@ app.post('/api/gateway/restart', async (req, res) => {
 // POST /api/gateway/stop
 app.post('/api/gateway/stop', async (req, res) => {
     try {
-        await execAsync('sudo docker stop ibgateway');
+        await execAsync('docker stop eos-ibgateway');
         res.json({ success: true, message: 'Container parado' });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -97,7 +97,7 @@ app.post('/api/gateway/stop', async (req, res) => {
 // POST /api/gateway/start
 app.post('/api/gateway/start', async (req, res) => {
     try {
-        await execAsync('sudo docker start ibgateway');
+        await execAsync('docker start eos-ibgateway');
         res.json({ success: true, message: 'Container iniciado' });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -179,28 +179,32 @@ app.get('/api/gateway/stats', (req, res) => {
     }
 });
 
-// GET /api/gateway/system - Retorna status dos serviços
+// GET /api/gateway/system - Status dos sistemas via Docker
 app.get('/api/gateway/system', async (req, res) => {
     try {
-        const { stdout } = await execAsync('pm2 jlist');
-        const processes = JSON.parse(stdout);
+        const { stdout } = await execAsync('docker ps --format "{{.Names}},{{.Status}}"');
+        const lines = stdout.split('\n');
 
-        const getStatus = (name) => {
-            const proc = processes.find(p => p.name === name);
-            return proc ? proc.pm2_env.status : 'stopped';
+        const getStatus = (containerName) => {
+            const line = lines.find(l => l.startsWith(containerName));
+            if (!line) return 'stopped';
+            // Se existir e não for exited, assume running. O status do docker é complexo (Ex: Up 3 hours)
+            return line.includes('Exited') ? 'stopped' : 'online';
         };
 
         res.json({
-            forex: getStatus('eos-iq-bot'),
-            crypto: getStatus('eos-telegram-bot'),
-            gateway: getStatus('gateway-api') || getStatus('gateway-server'),
+            forex: getStatus('eos-forex-bot'),
+            crypto: getStatus('eos-crypto-bot'),
+            gateway: getStatus('eos-gateway'),
             timestamp: new Date().toISOString()
         });
     } catch (error) {
+        console.error('System status error:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
+// Start server
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 IB Gateway Control API running on port ${PORT}`);
 });
