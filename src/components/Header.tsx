@@ -18,6 +18,7 @@ const Header = () => {
   }, []);
 
   const navLinks = [
+    { label: "Analytics 📊", href: "/analytics" },
     { label: t.nav.features, href: "#features" },
     { label: t.nav.specs, href: "#specs" },
     { label: t.nav.api, href: "#api" },

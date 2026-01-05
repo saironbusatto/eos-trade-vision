@@ -109,75 +109,152 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Database Connection for Stats
-const Database = require('better-sqlite3');
+// Database Connections
 const path = require('path');
-const dbPath = path.resolve(__dirname, 'data', 'eos-iq.db');
+const Database = require('better-sqlite3');
 
-// GET /api/gateway/stats - Retorna estatísticas reais do DB
-app.get('/api/gateway/stats', (req, res) => {
+const FOREX_DB = path.resolve(__dirname, 'data', 'eos-iq.db');
+const CRYPTO_DB = path.resolve(__dirname, 'data-crypto', 'eos.db');
+
+// Helper para conectar e executar query segura
+function queryDB(dbPath, sql, params = []) {
+    let db;
     try {
-        const db = new Database(dbPath, { readonly: true });
+        // Tenta abrir sem readonly primeiro para evitar problemas com WAL/SHM em sistemas de arquivos montados
+        // Se falhar, o catch captura.
+        db = new Database(dbPath, { timeout: 5000 });
+        return db.prepare(sql).all(params);
+    } catch (error) {
+        console.warn(`[DB Warning] Failed to query ${path.basename(dbPath)}: ${error.message}`);
+        // Tentar fallback readonly se o erro for de permissão
+        try {
+            const retryDb = new Database(dbPath, { readonly: true, timeout: 5000 });
+            const results = retryDb.prepare(sql).all(params);
+            retryDb.close();
+            return results;
+        } catch (retryError) {
+            console.error(`[DB Error] Retry failed for ${path.basename(dbPath)}: ${retryError.message}`);
+            return [];
+        }
+    } finally {
+        if (db && db.open) db.close();
+    }
+}
 
-        // Stats Gerais (v3.0)
-        const total = db.prepare('SELECT COUNT(*) as c FROM signals').get();
-        const wins = db.prepare("SELECT COUNT(*) as c FROM signals WHERE result = 'WIN' AND strategy_version = 'v3.0'").get();
-        const losses = db.prepare("SELECT COUNT(*) as c FROM signals WHERE result = 'LOSS' AND strategy_version = 'v3.0'").get();
-        const pending = db.prepare("SELECT COUNT(*) as c FROM signals WHERE result = 'PENDING'").get();
+// GET /api/stats/analytics - Endpoint Unificado
+app.get('/api/gateway/analytics', (req, res) => {
+    try {
+        // Query Params
+        const { bot, strategy, startDate, endDate } = req.query;
+        // bot: 'forex', 'crypto', 'all' (default)
+        // strategy: 'v2.0', 'v3.0', 'all'
+        // timeframe filtering logic implementation needed
 
-        // Stats Golden
-        const goldenWins = db.prepare("SELECT COUNT(*) as c FROM signals WHERE result = 'WIN' AND is_golden = 1").get();
-        const goldenLosses = db.prepare("SELECT COUNT(*) as c FROM signals WHERE result = 'LOSS' AND is_golden = 1").get();
-        const goldenTotal = goldenWins.c + goldenLosses.c;
+        const forexSignals = [];
+        const cryptoSignals = [];
 
-        // Horário de melhor performance (UTC)
-        const bestHour = db.prepare(`
-            SELECT hour_utc, COUNT(*) as wins FROM signals 
-            WHERE result = 'WIN' 
-            GROUP BY hour_utc 
-            ORDER BY wins DESC 
-            LIMIT 1
-        `).get();
+        // 1. Fetch Forex Data
+        if (bot !== 'crypto') {
+            const rawForex = queryDB(FOREX_DB, "SELECT * FROM signals WHERE result IN ('WIN', 'LOSS')");
+            rawForex.forEach(s => {
+                forexSignals.push({
+                    type: 'forex',
+                    id: s.id,
+                    asset: s.pair,
+                    action: s.direction, // CALL/PUT
+                    result: s.result,
+                    strategy: s.strategy_version || 'v2.0',
+                    timeframe: s.expiration_min || 5,
+                    timestamp: s.created_at,
+                    score: s.score,
+                    isGolden: s.is_golden || false
+                });
+            });
+        }
 
-        // Melhor par
-        const bestPair = db.prepare(`
-            SELECT pair, COUNT(*) as wins FROM signals 
-            WHERE result = 'WIN' 
-            GROUP BY pair 
-            ORDER BY wins DESC 
-            LIMIT 1
-        `).get();
+        // 2. Fetch Crypto Data
+        if (bot !== 'forex') {
+            // Nota: Schema do crypto é diferente (symbol, action, etc)
+            const rawCrypto = queryDB(CRYPTO_DB, "SELECT * FROM signals WHERE result IN ('WIN', 'LOSS')");
+            rawCrypto.forEach(s => {
+                cryptoSignals.push({
+                    type: 'crypto',
+                    id: s.id,
+                    asset: s.symbol,
+                    action: s.action, // BUY/SELL
+                    result: s.result,
+                    strategy: s.strategy_version || 'v3.0',
+                    timeframe: 15, // Crypto usa timeframe fixo de 15min para validação
+                    timestamp: s.created_at,
+                    score: s.score
+                });
+            });
+        }
 
-        db.close();
+        // 3. Merge and Filter
+        let allSignals = [...forexSignals, ...cryptoSignals];
 
-        const closed = wins.c + losses.c;
-        const winRate = closed > 0 ? ((wins.c / closed) * 100).toFixed(1) : 0;
+        // Filter by Date
+        if (startDate) {
+            allSignals = allSignals.filter(s => new Date(s.timestamp) >= new Date(startDate));
+        }
+        if (endDate) {
+            allSignals = allSignals.filter(s => new Date(s.timestamp) <= new Date(endDate));
+        }
 
-        const goldenWinRate = goldenTotal > 0 ? ((goldenWins.c / goldenTotal) * 100).toFixed(1) : 0;
+        // Filter by Strategy
+        if (strategy && strategy !== 'all') {
+            allSignals = allSignals.filter(s => s.strategy === strategy);
+        }
+
+        // Filter by Timeframe
+        const { timeframe } = req.query;
+        if (timeframe && timeframe !== 'all') {
+            allSignals = allSignals.filter(s => s.timeframe === parseInt(timeframe));
+        }
+
+        // Extract unique strategies and timeframes for filter options
+        const strategies = [...new Set(allSignals.map(s => s.strategy))].filter(Boolean).sort();
+        const timeframes = [...new Set(allSignals.map(s => s.timeframe))].filter(Boolean).sort((a, b) => a - b);
+
+        // 4. Calculate Stats
+        const calculateStats = (signals) => {
+            const total = signals.length;
+            const wins = signals.filter(s => s.result === 'WIN').length;
+            return {
+                total,
+                wins,
+                losses: total - wins,
+                winRate: total > 0 ? (wins / total) * 100 : 0
+            };
+        };
+
+        // Calculate stats per strategy
+        const strategyStats = {};
+        strategies.forEach(strat => {
+            const stratSignals = allSignals.filter(s => s.strategy === strat);
+            strategyStats[strat] = calculateStats(stratSignals);
+        });
 
         res.json({
-            all: {
-                total: total.c,
-                wins: wins.c,
-                losses: losses.c,
-                winRate: Number(winRate)
+            summary: calculateStats(allSignals),
+            forex: calculateStats(allSignals.filter(s => s.type === 'forex')),
+            crypto: calculateStats(allSignals.filter(s => s.type === 'crypto')),
+            signals: allSignals,
+            filters: {
+                strategies,
+                timeframes
             },
-            golden: {
-                total: goldenTotal,
-                wins: goldenWins.c,
-                losses: goldenLosses.c,
-                winRate: Number(goldenWinRate)
-            },
-            pendentes: pending.c,
-            melhorPar: bestPair ? bestPair.pair : 'N/A',
-            melhorHorario: bestHour ? `${bestHour.hour_utc}:00 UTC` : 'N/A'
+            strategyStats
         });
 
     } catch (error) {
-        console.error('Database stats error:', error);
-        res.status(500).json({ error: error.message, details: 'Falha ao ler banco de dados' });
+        console.error('Analytics Error:', error);
+        res.status(500).json({ error: error.message });
     }
 });
+
+
 
 // GET /api/gateway/system - Status dos sistemas via Docker
 app.get('/api/gateway/system', async (req, res) => {
