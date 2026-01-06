@@ -56,6 +56,12 @@ const MIN_SCORE = DATA_COLLECTION_MODE ? 40 : 70; // 40% coleta, 70% produção
 const SCAN_INTERVAL = 10 * 60 * 1000; // 10 minutos
 const VALIDATION_INTERVAL = 5 * 60 * 1000; // Valida a cada 5 min
 
+// Stablecoins a serem excluídas (não faz sentido tradear stablecoins)
+const EXCLUDED_STABLECOINS = [
+    'USDT', 'USDC', 'USDS', 'USDE', 'DAI', 'TUSD',
+    'FDUSD', 'EURC', 'USDP', 'PYUSD', 'BUSD', 'GUSD'
+];
+
 export class TrendingScanner {
     private isRunning = false;
     private trendingCoins: TrendingCoin[] = [];
@@ -113,9 +119,20 @@ export class TrendingScanner {
         const response = await fetch(url);
         const data = await response.json() as any[];
 
-        // Filter USDT pairs and sort by volume
+        // Helper para verificar se é uma stablecoin
+        const isStablecoin = (symbol: string) => {
+            const base = symbol.replace('USDT', '');
+            return EXCLUDED_STABLECOINS.includes(base.toUpperCase());
+        };
+
+        // Filter USDT pairs, exclude stablecoins, leveraged tokens, and sort by volume
         this.trendingCoins = data
-            .filter((t: any) => t.symbol.endsWith("USDT") && !t.symbol.includes("UP") && !t.symbol.includes("DOWN"))
+            .filter((t: any) =>
+                t.symbol.endsWith("USDT") &&
+                !t.symbol.includes("UP") &&
+                !t.symbol.includes("DOWN") &&
+                !isStablecoin(t.symbol)
+            )
             .map((t: any) => ({
                 symbol: t.symbol,
                 priceChangePercent: parseFloat(t.priceChangePercent),
