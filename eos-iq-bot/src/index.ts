@@ -132,9 +132,11 @@ async function validatePendingSignals() {
 
             let result: 'WIN' | 'LOSS';
             if (signal.direction === 'CALL') {
-                result = quote.price > signal.entry_price ? 'WIN' : 'LOSS';
+                // >= para que empate (preço igual) seja WIN (não perdeu dinheiro)
+                result = quote.price >= signal.entry_price ? 'WIN' : 'LOSS';
             } else {
-                result = quote.price < signal.entry_price ? 'WIN' : 'LOSS';
+                // PUT: <= para que empate seja WIN
+                result = quote.price <= signal.entry_price ? 'WIN' : 'LOSS';
             }
 
             sqliteDatabase.closeSignal(signal.id, quote.price, result);
