@@ -51,7 +51,7 @@ interface OFASignal {
 // Threshold 70% para maior precisão
 // ============================================
 const STRATEGY_VERSION = 'v3.0';
-const DATA_COLLECTION_MODE = true; // true = continua coletando dados
+const DATA_COLLECTION_MODE = false; // false = produção com threshold 70%
 const MIN_SCORE = DATA_COLLECTION_MODE ? 40 : 70; // 40% coleta, 70% produção
 const SCAN_INTERVAL = 10 * 60 * 1000; // 10 minutos
 const VALIDATION_INTERVAL = 5 * 60 * 1000; // Valida a cada 5 min
