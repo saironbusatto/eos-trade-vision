@@ -4,9 +4,11 @@ dotenv.config();
 
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
-import { telegram } from "./telegram";
+import { telegramListener as telegram } from "./TelegramListener";
 import { trendingScanner } from "./trendingScanner";
 import { getDataService } from "./engine";
+import { NewsCollector } from "./services/NewsCollector";
+import { SentimentAnalyzer } from "./services/SentimentAnalyzer";
 import type { TradingSignal, AlertMessage } from "./types";
 
 const app = express();
@@ -131,4 +133,14 @@ app.listen(PORT, () => {
     // Start trending scanner (top 10 coins, every 10 min)
     trendingScanner.start();
     console.log("TrendingScanner started - analyzing top 10 coins every 10 min");
+
+    // Start News Collector (RSS)
+    const newsCollector = new NewsCollector();
+    newsCollector.start();
+    console.log("📰 NewsCollector started - Fetching RSS feeds...");
+
+    // Start Sentiment Analyzer (OpenAI)
+    const sentimentAnalyzer = new SentimentAnalyzer();
+    sentimentAnalyzer.start(); // Uses default 60s polling
+    console.log("🧠 SentimentAnalyzer started - Analyzing market sentiment...");
 });

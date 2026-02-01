@@ -3,6 +3,7 @@ import path from 'path';
 
 // Initialize SQLite database
 const DB_PATH = process.env.DATABASE_PATH || './data/eos.db';
+console.log(`[DEBUG] Loading sqliteDatabase.ts... DB_PATH=${DB_PATH}`);
 const db = new Database(path.resolve(DB_PATH));
 
 // Enable WAL mode for better performance
@@ -172,13 +173,95 @@ function initSchema(): void {
 
         CREATE INDEX IF NOT EXISTS idx_signals_result ON signals(result);
         CREATE INDEX IF NOT EXISTS idx_checkpoints_signal ON price_checkpoints(signal_id);
+
+        -- ==========================================
+        -- FASE 3: ALTERNATIVE DATA (NEWS)
+        -- ==========================================
+        CREATE TABLE IF NOT EXISTS news_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            guid TEXT UNIQUE,          -- Identificador único do RSS
+            content_hash TEXT UNIQUE,  -- Hash do conteúdo para evitar duplicatas
+            source TEXT NOT NULL,
+            title TEXT NOT NULL,
+            link TEXT NOT NULL,
+            published_at DATETIME NOT NULL,
+            fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP, -- Integrity Check: When bot saw it
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS news_signals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            news_item_id INTEGER NOT NULL,
+            crypto_relevant BOOLEAN NOT NULL,
+            sentiment_score REAL,      -- -1.0 a +1.0
+            impact_rating INTEGER,     -- 1 a 5
+            reasoning TEXT,
+            model_used TEXT,           -- Metadata de reprodutibilidade
+            prompt_version TEXT,       -- Metadata de reprodutibilidade
+            input_hash TEXT,           -- Metadata de reprodutibilidade
+            processed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            available_at DATETIME DEFAULT CURRENT_TIMESTAMP, -- Integrity Check: When signal was ready
+            FOREIGN KEY (news_item_id) REFERENCES news_items(id),
+            UNIQUE(news_item_id, model_used, prompt_version) -- Garante idempotência
+        );
     `);
+
+    // ==========================================
+    // FASE 3: PAPER TRADING (Separate Statements)
+    // ==========================================
+    db.prepare(`
+        CREATE TABLE IF NOT EXISTS paper_accounts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT UNIQUE,
+            username TEXT,
+            initial_balance REAL DEFAULT 1000.0,
+            balance REAL NOT NULL,
+            equity REAL NOT NULL,
+            status TEXT DEFAULT 'ACTIVE',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `).run();
+
+    db.prepare(`
+        CREATE TABLE IF NOT EXISTS paper_positions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER NOT NULL,
+            symbol TEXT NOT NULL,
+            side TEXT NOT NULL,
+            entry_price REAL NOT NULL,
+            size REAL NOT NULL,
+            leverage REAL DEFAULT 1.0,
+            stop_loss REAL,
+            take_profit REAL,
+            entry_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (account_id) REFERENCES paper_accounts(id)
+        )
+    `).run();
+
+    db.prepare(`
+        CREATE TABLE IF NOT EXISTS paper_trades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            position_id INTEGER NOT NULL,
+            exit_price REAL NOT NULL,
+            pnl REAL NOT NULL,
+            pnl_percent REAL NOT NULL,
+            closed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            close_reason TEXT,
+            execution_model TEXT DEFAULT 'baseline',
+            FOREIGN KEY (position_id) REFERENCES paper_positions(id)
+        )
+    `).run();
 
     console.log('[SQLite] Schema initialized');
 }
 
 // Initialize on import
-initSchema();
+try {
+    initSchema();
+} catch (err) {
+    console.error("❌ initSchema Failed:", err);
+}
 
 // ========== SIGNAL CRUD ==========
 
@@ -413,5 +496,194 @@ export const sqliteDatabase = {
     // Get all ML training records
     getMLRecords(): MLTrainingRecord[] {
         return db.prepare('SELECT * FROM ml_training ORDER BY id').all() as MLTrainingRecord[];
+    },
+
+    // ========== ALTERNATIVE DATA (NEWS) ==========
+
+    insertNewsItem(item: {
+        guid: string;
+        content_hash: string;
+        source: string;
+        title: string;
+        link: string;
+        published_at: string;
+    }): number | null {
+        try {
+            const stmt = db.prepare(`
+                INSERT OR IGNORE INTO news_items (
+                    guid, content_hash, source, title, link, published_at, fetched_at
+                ) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+            `);
+            const info = stmt.run(
+                item.guid, item.content_hash, item.source, item.title, item.link, item.published_at
+            );
+            if (info.changes > 0) {
+                console.log(`[SQLite] News saved: ${item.source} - ${item.title.substring(0, 30)}...`);
+                return info.lastInsertRowid as number;
+            }
+            return null; // Duplicate
+        } catch (err) {
+            console.error('[SQLite] Error inserting news item:', err);
+            return null;
+        }
+    },
+
+    getRecentNews(limit: number = 20): any[] {
+        return db.prepare('SELECT * FROM news_items ORDER BY published_at DESC LIMIT ?').all(limit);
+    },
+
+    getUnprocessedNews(limit: number = 5): any[] {
+        // News items that do NOT have a corresponding signal with 'v1.0' (simplified check)
+        // Or strictly LEFT JOIN where id is null
+        const stmt = db.prepare(`
+            SELECT n.* FROM news_items n
+            LEFT JOIN news_signals s ON n.id = s.news_item_id
+            WHERE s.id IS NULL
+            ORDER BY n.published_at DESC
+            LIMIT ?
+        `);
+        return stmt.all(limit);
+    },
+
+    insertNewsSignal(signal: {
+        news_item_id: number;
+        crypto_relevant: boolean;
+        sentiment_score: number;
+        impact_rating: number;
+        reasoning: string;
+        model_used: string;
+        prompt_version: string;
+        input_hash: string;
+    }): void {
+        const stmt = db.prepare(`
+            INSERT OR REPLACE INTO news_signals (
+                news_item_id, crypto_relevant, sentiment_score, impact_rating, 
+                reasoning, model_used, prompt_version, input_hash, available_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        `);
+        stmt.run(
+            signal.news_item_id,
+            signal.crypto_relevant ? 1 : 0,
+            signal.sentiment_score,
+            signal.impact_rating,
+            signal.reasoning,
+            signal.model_used,
+            signal.prompt_version,
+            signal.input_hash
+        );
+        console.log(`[SQLite] Signal save for item #${signal.news_item_id}`);
+    },
+
+    getRecentSentimentSignals(windowMinutes: number = 60, minImpact: number = 4): any[] {
+        const stmt = db.prepare(`
+            SELECT ns.*, ni.title, ni.link 
+            FROM news_signals ns
+            JOIN news_items ni ON ns.news_item_id = ni.id
+            WHERE ns.impact_rating >= ?
+            AND ns.available_at <= datetime('now')  -- STRICT Anti-Lookahead
+            AND ns.available_at >= datetime('now', '-' || ? || ' minutes') -- Valid Window
+            ORDER BY ns.available_at DESC
+        `);
+        return stmt.all(minImpact, windowMinutes);
+    },
+
+    // ========== PAPER TRADING (MULTI-USER) ==========
+
+    getAccount(userId: string): any {
+        return db.prepare('SELECT * FROM paper_accounts WHERE user_id = ?').get(userId);
+    },
+
+    createAccount(userId: string, username: string, initialBalance: number): void {
+        const stmt = db.prepare(`
+            INSERT OR REPLACE INTO paper_accounts (user_id, username, initial_balance, balance, equity, status)
+            VALUES (?, ?, ?, ?, ?, 'ACTIVE')
+        `);
+        stmt.run(userId, username, initialBalance, initialBalance, initialBalance);
+        console.log(`[SQLite] Paper Account created for ${username} (${userId}) with $${initialBalance}`);
+    },
+
+    updateAccountBalance(userId: string, balance: number, equity: number): void {
+        const stmt = db.prepare('UPDATE paper_accounts SET balance = ?, equity = ?, updated_at = datetime("now") WHERE user_id = ?');
+        stmt.run(balance, equity, userId);
+    },
+
+    getOpenPositions(accountId: number): any[] {
+        return db.prepare('SELECT * FROM paper_positions WHERE account_id = ?').all(accountId);
+    },
+
+    openPosition(pos: {
+        account_id: number;
+        symbol: string;
+        side: string;
+        entry_price: number;
+        size: number;
+        leverage: number;
+        stop_loss?: number;
+        take_profit?: number;
+    }): number {
+        const stmt = db.prepare(`
+            INSERT INTO paper_positions (
+                account_id, symbol, side, entry_price, size, leverage, stop_loss, take_profit
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        const info = stmt.run(
+            pos.account_id, pos.symbol, pos.side, pos.entry_price, pos.size,
+            pos.leverage, pos.stop_loss, pos.take_profit
+        );
+        return info.lastInsertRowid as number;
+    },
+
+    closePosition(id: number): void {
+        db.prepare('DELETE FROM paper_positions WHERE id = ?').run(id);
+    },
+
+    insertTrade(trade: {
+        position_id: number;
+        account_id: number;
+        symbol: string;
+        side: string;
+        entry_price: number;
+        exit_price: number;
+        size: number;
+        pnl_gross: number;
+        slippage_cost: number;
+        pnl_net: number;
+        pnl_percent: number;
+        close_reason: string;
+        execution_model: string;
+        opened_at: string; // ISO date passed from position
+    }): void {
+        const stmt = db.prepare(`
+            INSERT INTO paper_trades (
+                position_id, account_id, symbol, side, entry_price, exit_price, size,
+                pnl_gross, slippage_cost, pnl_net, pnl_percent, close_reason, execution_model, opened_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        stmt.run(
+            trade.position_id, trade.account_id, trade.symbol, trade.side,
+            trade.entry_price, trade.exit_price, trade.size,
+            trade.pnl_gross, trade.slippage_cost, trade.pnl_net, trade.pnl_percent,
+            trade.close_reason, trade.execution_model, trade.opened_at
+        );
+        console.log(`[SQLite] Paper Trade saved: ${trade.symbol} PnL: $${trade.pnl_net.toFixed(2)}`);
+    },
+
+    getTradeStats(accountId: number): { wins: number; losses: number; total_pnl: number; win_rate: number } {
+        const trades = db.prepare('SELECT pnl_net FROM paper_trades WHERE account_id = ?').all(accountId) as { pnl_net: number }[];
+
+        let wins = 0;
+        let losses = 0;
+        let total_pnl = 0;
+
+        for (const t of trades) {
+            total_pnl += t.pnl_net;
+            if (t.pnl_net > 0) wins++;
+            else losses++; // Ties count as loss or ignore? Counting as loss for conservative stats
+        }
+
+        const total = wins + losses;
+        const win_rate = total > 0 ? (wins / total) * 100 : 0;
+
+        return { wins, losses, total_pnl, win_rate };
     }
 };
