@@ -4,6 +4,7 @@ import { getRandomQuote } from "./quotes";
 import { calculatePosition, getFundingRate } from "./leverageCalculator";
 import { getMacroAnalysis, getMacroForDB } from "./macroAnalyzer";
 import { getDataService } from "./engine";
+import { mlService } from "./mlService";
 
 // Default bankroll for calculations (user can override)
 const DEFAULT_BANKROLL = 1000; // $1000
