@@ -1,0 +1,13 @@
+RELATÓRIO DE ANÁLISE V5 (LÓGICA INVERTIDA)
+==========================================
+Teste de Hipótese: 'Se comprarmos quando o bot manda vender (e vice-versa), ganhamos dinheiro?'
+
+1. ESTRATÉGIA TRENDING INVERTIDA (ADX > 25)
+   Best Train: Stop 1.5xATR | TP 3.0xATR | E=-0.25%
+   Validation: E=-0.31% | WR=19.5%
+
+2. ESTRATÉGIA RANGING INVERTIDA (ADX < 20)
+   Best Train: Stop 0.5xATR | TP 1.5xATR | E=-0.15%
+   Validation: E=-0.19% | WR=8.2%
+
+STATUS FINAL: 💀 SEM EDGE (Ruído)

@@ -1,0 +1,21 @@
+{
+    "status": "REJECTED",
+    "stop_loss_pct": 0.5,
+    "min_score": 6,
+    "best_hours": [
+        0,
+        13,
+        14,
+        16,
+        17
+    ],
+    "best_pairs": [
+        "DUSKUSDT",
+        "FOGOUSDT",
+        "SUIUSDT",
+        "USD1USDT",
+        "ZECUSDT"
+    ],
+    "expected_E": -0.1738219895287959,
+    "max_drawdown": 35.97500000000003
+}

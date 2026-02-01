@@ -3,7 +3,7 @@ import { sqliteDatabase } from "./sqliteDatabase";
 import { getRandomQuote } from "./quotes";
 import { calculatePosition, getFundingRate } from "./leverageCalculator";
 import { getMacroAnalysis, getMacroForDB } from "./macroAnalyzer";
-import { mlFilter } from "./mlFilter";
+import { getDataService } from "./engine";
 
 // Default bankroll for calculations (user can override)
 const DEFAULT_BANKROLL = 1000; // $1000
@@ -69,6 +69,29 @@ export class TrendingScanner {
     async start(): Promise<void> {
         console.log("[TrendingScanner] Iniciando scanner de trending coins...");
         this.isRunning = true;
+
+        // Initialize DataService with default popular coins
+        const dataService = getDataService();
+        const defaultSymbols = [
+            'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT',
+            'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT', 'DOTUSDT'
+        ];
+
+        console.log("[TrendingScanner] Initializing DataService...");
+        await dataService.initialize(defaultSymbols);
+
+        // Wait for at least one symbol to be ready (max 60s)
+        console.log("[TrendingScanner] Waiting for DataService warmup...");
+        const warmupStart = Date.now();
+        let readyCount = 0;
+
+        while (readyCount < 3 && Date.now() - warmupStart < 60000) {
+            await new Promise(r => setTimeout(r, 2000));
+            readyCount = defaultSymbols.filter(s => dataService.isReady(s)).length;
+            console.log(`[TrendingScanner] ${readyCount}/${defaultSymbols.length} symbols ready`);
+        }
+
+        console.log(`[TrendingScanner] DataService warmup complete: ${readyCount} symbols LIVE_OK`);
 
         // First scan immediately
         await this.scan();
@@ -152,25 +175,46 @@ export class TrendingScanner {
             const signal = await this.analyzeOFA(coin);
 
             if (signal && signal.score >= MIN_SCORE) {
-                // ML Filter: Check if signal should be executed
-                const mlResult = await mlFilter.shouldExecute({
-                    f_volume: signal.f_volume,
-                    f_momentum: signal.f_momentum,
-                    f_trend: signal.f_trend,
-                    f_price_context: signal.f_price_context,
+                // [NEW] ML Service V2: Python Inference
+                const now = new Date();
+
+                // Prepare features payload
+                const mlResult = await mlService.predict(signal.symbol, {
                     f_smart_money: signal.f_smart_money,
+                    f_price_context: signal.f_price_context,
                     f_imbalance: signal.f_imbalance,
                     f_absorption: signal.f_absorption,
+                    f_trend: signal.f_trend,
+                    f_momentum: signal.f_momentum,
+                    f_volume: signal.f_volume,
                     score: signal.score,
+                    // Temporal features
+                    hour_utc: now.getUTCHours(),
+                    day_of_week: now.getUTCDay(),
+                    // Raw metrics for extra context
+                    volume_ratio: signal.volumeRatio,
+                    trend: signal.trend,
+                    momentum: signal.momentum,
+                    price_change_24h: signal.priceChange24h,
+                    min_score: MIN_SCORE
                 });
 
                 // Log ML decision
-                console.log(`[ML] ${signal.symbol}: ${mlResult.reason}`);
+                const reasons = mlResult.reasons ? mlResult.reasons.join(' | ') : 'No reason provided';
+                console.log(`[ML V2] ${signal.symbol}: ${mlResult.direction} (Conf: ${(mlResult.confidence * 100).toFixed(1)}%) - ${reasons}`);
 
                 // Skip if ML rejects (only in production mode)
-                if (!DATA_COLLECTION_MODE && !mlResult.should_execute) {
-                    console.log(`[ML] ${signal.symbol} rejeitado pelo filtro ML`);
-                    continue;
+                if (!DATA_COLLECTION_MODE) {
+                    if (!mlResult.should_trade) {
+                        console.log(`[ML V2] ${signal.symbol} REJEITADO pelo modelo de IA`);
+                        continue;
+                    }
+
+                    // Se o modelo sugerir direção diferente, podemos respeitar ou ignorar
+                    // Como nosso sistema OFA já definiu a direção (signal.direction), 
+                    // o modelo ML atua mais como validador. 
+                    // Mas se o modelo Direction der "NO-TRADE", já foi filtrado acima.
+                    // Se der direção oposta, é um sinal de alerta, mas por enquanto vamos confiar no Gating Model.
                 }
 
                 // Save to database with stop/target and get ID

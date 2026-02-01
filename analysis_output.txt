@@ -1,0 +1,18 @@
+
+📘 BANCO: CRYPTO BOT (eos-telegram-bot/data/eos.db)
+   📂 Tabela: signals              | Linhas: 3045
+      Colunas: id, symbol, action, entry_price, stop_loss, take_profit, score, result, created_at, validated_at, exit_price, f_smart_money, f_price_context, f_imbalance, f_absorption, f_trend, f_momentum, f_volume, volume_ratio, trend, momentum, price_change_24h, strategy_version
+   📂 Tabela: sqlite_sequence      | Linhas: 3
+      Colunas: name, seq
+   📂 Tabela: price_checkpoints    | Linhas: 8980
+      Colunas: id, signal_id, checkpoint_min, price, profit_percent, timestamp
+   📂 Tabela: ml_training          | Linhas: 1780
+      Colunas: id, signal_id, symbol, action, result, final_profit, time_to_result_min, f_smart_money, f_price_context, f_imbalance, f_absorption, f_trend, f_momentum, f_volume, score, profit_5m, profit_10m, profit_15m, profit_30m, profit_45m, hour_utc, day_of_week, macro_confidence, macro_sentiment, fear_greed, trade_recommendation, sp500_trend, fed_stance
+
+📘 BANCO: IQ BOT (Legacy) (eos-iq-bot/data/eos-iq.db)
+   📂 Tabela: signals              | Linhas: 46851
+      Colunas: id, pair, direction, entry_price, exit_price, score, result, expiration_min, created_at, validated_at, delta, delta_cumulative, absorption_detected, divergence_detected, stacked_imbalances, vpoc_migration, reversal_sequence, hour_utc, day_of_week, strategy_version, is_golden
+   📂 Tabela: sqlite_sequence      | Linhas: 2
+      Colunas: name, seq
+   📂 Tabela: ml_training          | Linhas: 46838
+      Colunas: id, signal_id, pair, direction, result, expiration_min, delta, delta_cumulative, absorption_detected, divergence_detected, stacked_imbalances, reversal_sequence, score, hour_utc, day_of_week, macro_confidence, macro_sentiment, fear_greed, sp500_trend, fed_stance

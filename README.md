@@ -4,6 +4,13 @@ Sistema de trading algorítmico com **Order Flow Analysis** + **Machine Learning
 
 ---
 
+### 🚀 Atalhos Rápidos
+- 🛡️ **Infraestrutura AWS (IPs, Deploy, SSH):** [docs/INFRASTRUCTURE.md](./docs/INFRASTRUCTURE.md)
+- ⚙️ **Regras do Projeto em IA:** [.agent/rules.md](./.agent/rules.md)
+- 📝 **Guia de Comparação Local vs GitHub:** [walkthrough.md](file:///C:/Users/sairo/.gemini/antigravity/brain/f456636b-70d3-480c-acd0-86d83a7c58fe/walkthrough.md)
+
+---
+
 ## 🎯 Overview
 
 | Bot | Mercado | Estratégia | Status |

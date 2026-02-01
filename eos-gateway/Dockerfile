@@ -1,0 +1,31 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Instalar dependências de build e docker-cli
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    docker-cli
+
+# Copiar package.json dedicado e instalar dependências
+COPY package.json ./package.json
+
+# Instalar dependências (incluindo nativas)
+RUN npm install --omit=dev
+
+# Copiar arquivos necessários
+COPY server.js ./
+
+# Dados serão montados via volume
+
+# Porta da API
+EXPOSE 3001
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3001/api/gateway/status || exit 1
+
+# Executar
+CMD ["node", "server.js"]

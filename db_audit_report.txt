@@ -1,0 +1,74 @@
+
+==================== EOS PROD DB (eos-telegram-bot/data/eos.db) ====================
+
+--- A. DIVERSITY & CONTAMINATION ---
+Total Rows: 18062
+Unique Symbols: 28
+
+Asset Type Distribution:
+  asset_type      n
+0     CRYPTO  18062
+
+Top 20 Symbols:
+      symbol     n
+0    SOLUSDT  3032
+1    ETHUSDT  2522
+2    BTCUSDT  2501
+3    BNBUSDT  2186
+4    XRPUSDT  1758
+5    ZECUSDT  1229
+6   USD1USDT   904
+7   PAXGUSDT   810
+8   DOGEUSDT   639
+9   DASHUSDT   632
+10   SUIUSDT   303
+11   BCHUSDT   281
+12  PEPEUSDT   203
+13  FOGOUSDT   177
+14   TRXUSDT   113
+15   ZKPUSDT   103
+16  BREVUSDT    97
+17   AXSUSDT    90
+18  币安人生USDT    86
+19   LTCUSDT    86
+
+--- B. SCHEMA (PRAGMA table_info) ---
+ cid                name        type  notnull        dflt_value
+   0                  id     INTEGER        0              None
+   1              symbol        TEXT        1              None
+   2              action        TEXT        1              None
+   3         entry_price        REAL        1              None
+   4           stop_loss        REAL        1              None
+   5         take_profit        REAL        1              None
+   6               score     INTEGER        1              None
+   7              result        TEXT        0         'PENDING'
+   8          created_at    DATETIME        0 CURRENT_TIMESTAMP
+   9        validated_at    DATETIME        0              None
+  10          exit_price        REAL        0              None
+  11       f_smart_money        REAL        0                 0
+  12     f_price_context        REAL        0               0.5
+  13         f_imbalance        REAL        0                 0
+  14        f_absorption        REAL        0                 0
+  15             f_trend        REAL        0               0.5
+  16          f_momentum        REAL        0               0.5
+  17            f_volume        REAL        0               0.5
+  18    strategy_version        TEXT        0            'v2.0'
+  19        volume_ratio        REAL        0              None
+  20               trend        REAL        0              None
+  21            momentum        REAL        0              None
+  22    price_change_24h        REAL        0              None
+  23                 pnl       FLOAT        0              None
+  24                 mfe       FLOAT        0              None
+  25                 mae       FLOAT        0              None
+  26                vwap       FLOAT        0              None
+  27              volume       FLOAT        0              None
+  28         location_va VARCHAR(10)        0              None
+  29   distance_vwap_std       FLOAT        0              None
+  30 effort_result_ratio       FLOAT        0              None
+  31       is_absorption     BOOLEAN        0              None
+  32   volatility_regime VARCHAR(10)        0              None
+  33          setup_type VARCHAR(20)        0              None
+  34          asset_type VARCHAR(10)        0              None
+  35            meta_adx       FLOAT        0              None
+  36            meta_atr       FLOAT        0              None
+  37         regime_type VARCHAR(20)        0              None

@@ -1,0 +1,16 @@
+TESTE DE CEGUEIRA DE DADOS
+--------------------------
+1. Bot Atual (Limit 1000):
+   - Trades: 1000
+   - Tempo Coberto: 4.13 min
+   - O resto (55.87 min) e ignorado.
+
+2. Realidade (Full History):
+   - Trades: 11148
+   - Tempo Coberto: 59.99 min
+
+VEREDITO:
+   - Perda de Dados: 91.03%
+   - Trades Ignorados: 10148
+
+CONCLUSAO: O sistema esta cego. A aleatoriedade e esperada.

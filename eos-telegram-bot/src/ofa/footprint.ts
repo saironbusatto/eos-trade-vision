@@ -1,11 +1,15 @@
 /**
  * Footprint Analyzer
  * 
- * Analisa agressão de compra vs venda por candle,
- * base para detecção de Imbalances.
+ * Analisa agressao de compra vs venda por candle,
+ * base para deteccao de Imbalances.
  * 
  * Baseado em: Footprint Charts (Trader Dale / Michael Valtos)
+ * 
+ * REFATORADO: Agora usa DataService (buffer 60min) em vez de REST direto.
  */
+
+import { getDataService, TradeData } from '../engine/DataService';
 
 export interface FootprintCandle {
     timestamp: number;
@@ -30,44 +34,17 @@ export interface PriceLevel {
     imbalanceRatio?: number;  // Ask/Bid ratio
 }
 
-interface AggTrade {
-    price: number;
-    quantity: number;
-    isBuyerMaker: boolean;  // false = comprador agrediu (Ask hit)
-    timestamp: number;
-}
-
-/**
- * Busca trades agregados da Binance
- */
-async function fetchAggTrades(symbol: string, minutes: number = 60): Promise<AggTrade[]> {
-    const endTime = Date.now();
-    const startTime = endTime - (minutes * 60 * 1000);
-
-    const url = `https://api.binance.com/api/v3/aggTrades?symbol=${symbol}&startTime=${startTime}&endTime=${endTime}&limit=1000`;
-
-    const response = await fetch(url);
-    const data = await response.json() as any[];
-
-    return data.map(t => ({
-        price: parseFloat(t.p),
-        quantity: parseFloat(t.q),
-        isBuyerMaker: t.m,
-        timestamp: t.T,
-    }));
-}
-
 /**
  * Agrupa trades em candles de footprint
  */
-function groupIntoCandles(trades: AggTrade[], candleMinutes: number = 15): FootprintCandle[] {
+function groupIntoCandles(trades: TradeData[], candleMinutes: number = 15): FootprintCandle[] {
     if (trades.length === 0) return [];
 
     const candleMs = candleMinutes * 60 * 1000;
     const candles: Map<number, FootprintCandle> = new Map();
 
     for (const trade of trades) {
-        // Arredondar para o início do candle
+        // Arredondar para o inicio do candle
         const candleStart = Math.floor(trade.timestamp / candleMs) * candleMs;
 
         let candle = candles.get(candleStart);
@@ -135,7 +112,7 @@ function groupIntoCandles(trades: AggTrade[], candleMinutes: number = 15): Footp
             level.delta = level.askVolume - level.bidVolume;
         }
 
-        // Ordenar levels por preço
+        // Ordenar levels por preco
         candle.priceLevels.sort((a, b) => b.price - a.price);
 
         result.push(candle);
@@ -148,16 +125,27 @@ function groupIntoCandles(trades: AggTrade[], candleMinutes: number = 15): Footp
 }
 
 /**
- * Gera footprint para um símbolo
+ * Gera footprint para um simbolo usando DataService
+ * REFATORADO: Nao faz mais REST direto
  */
 export async function generateFootprint(symbol: string, minutes: number = 60): Promise<FootprintCandle[]> {
-    try {
-        const trades = await fetchAggTrades(symbol, minutes);
-        return groupIntoCandles(trades);
-    } catch (error) {
-        console.error(`[Footprint] Error generating for ${symbol}:`, error);
+    const dataService = getDataService();
+
+    if (!dataService.isReady(symbol)) {
+        console.warn(`[Footprint] Symbol ${symbol} not ready`);
         return [];
     }
+
+    const trades = dataService.getTrades(symbol, minutes);
+
+    if (trades.length === 0) {
+        console.warn(`[Footprint] No trades for ${symbol}`);
+        return [];
+    }
+
+    console.log(`[Footprint] Generating from ${trades.length} trades for ${symbol}`);
+
+    return groupIntoCandles(trades);
 }
 
 /**
@@ -176,7 +164,7 @@ export function calculateCumulativeDelta(candles: FootprintCandle[]): number[] {
 }
 
 /**
- * Detecta divergência entre preço e delta
+ * Detecta divergência entre preco e delta
  */
 export function detectDeltaDivergence(candles: FootprintCandle[]): {
     hasDivergence: boolean;
@@ -190,11 +178,11 @@ export function detectDeltaDivergence(candles: FootprintCandle[]): {
     const recent = candles.slice(-4);
     const cumDelta = calculateCumulativeDelta(recent);
 
-    // Preço subindo mas delta caindo = bearish divergence
+    // Preco subindo mas delta caindo = bearish divergence
     const priceUp = recent[recent.length - 1].close > recent[0].close;
     const deltaDown = cumDelta[cumDelta.length - 1] < cumDelta[0];
 
-    // Preço descendo mas delta subindo = bullish divergence
+    // Preco descendo mas delta subindo = bullish divergence
     const priceDown = recent[recent.length - 1].close < recent[0].close;
     const deltaUp = cumDelta[cumDelta.length - 1] > cumDelta[0];
 
@@ -202,7 +190,7 @@ export function detectDeltaDivergence(candles: FootprintCandle[]): {
         return {
             hasDivergence: true,
             type: 'BEARISH_DIV',
-            description: 'Preço subindo mas compradores perdendo força',
+            description: 'Preco subindo mas compradores perdendo forca',
         };
     }
 
@@ -210,7 +198,7 @@ export function detectDeltaDivergence(candles: FootprintCandle[]): {
         return {
             hasDivergence: true,
             type: 'BULLISH_DIV',
-            description: 'Preço caindo mas compradores acumulando',
+            description: 'Preco caindo mas compradores acumulando',
         };
     }
 

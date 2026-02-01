@@ -25,9 +25,11 @@ import numpy as np
 from pathlib import Path
 import json
 
-# Configuração
-DB_PATH = '/app/data/eos.db'
-OUTPUT_DIR = '/app/data/ml'
+# Configuração - ajustar para ambiente local ou produção
+import os
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(SCRIPT_DIR, '..', 'data', 'eos.db')
+OUTPUT_DIR = os.path.join(SCRIPT_DIR, '..', 'data', 'ml')
 LABEL_THRESHOLD_PCT = 0.5  # Threshold base de 0.5%
 VOLATILITY_LOOKBACK = 20   # Janela para calcular volatilidade por símbolo
 

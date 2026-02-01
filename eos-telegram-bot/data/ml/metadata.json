@@ -1,0 +1,27 @@
+{
+  "feature_cols": [
+    "f_smart_money",
+    "f_price_context",
+    "f_imbalance",
+    "f_absorption",
+    "f_trend",
+    "f_momentum",
+    "f_volume",
+    "score",
+    "hour_sin",
+    "hour_cos",
+    "dow_sin",
+    "dow_cos"
+  ],
+  "label_col_direction": "y_direction",
+  "label_col_gate": "y_trade",
+  "train_size": 605,
+  "val_size": 130,
+  "test_size": 130,
+  "class_distribution_train": {
+    "0": 548,
+    "1": 32,
+    "-1": 25
+  },
+  "threshold_pct": 0.5
+}

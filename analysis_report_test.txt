@@ -1,0 +1,10 @@
+RELATÓRIO DE VALIDAÇÃO (Pós 2026-01-23 16:22:40)
+========================================
+Config Aplicada: Stop 0.5% | Score >= 6
+
+Métricas Treino vs Teste:
+Win Rate: 34.88% -> 49.21% (Degradação: -14.33%)
+Expectativa: -8.52% -> -17.38%
+Max DD: 81.43% -> 35.98%
+
+STATUS FINAL: ❌ REPROVADO

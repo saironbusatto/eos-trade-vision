@@ -1,0 +1,48 @@
+RELATÓRIO ESTATÍSTICO DE TRADING (CRYPTO)
+=========================================
+
+1. VISÃO GERAL
+   Total de Trades: 18062
+   Período: 2026-01-04 18:44:48 a 2026-02-01 15:42:57
+   Win Rate Global: 48.07%
+
+2. EFICIÊNCIA POR HORÁRIO (UTC)
+   Melhor Horário: 17h (53.11%)
+   Pior Horário:   10h (41.91%)
+   Detalhe Hora a Hora:
+   00h: 50.5% (754 trades)
+   01h: 50.5% (771 trades)
+   02h: 45.3% (808 trades)
+   03h: 46.5% (772 trades)
+   04h: 48.3% (731 trades)
+   05h: 47.7% (740 trades)
+   06h: 45.3% (770 trades)
+   07h: 49.9% (787 trades)
+   08h: 46.2% (801 trades)
+   09h: 49.7% (755 trades)
+   10h: 41.9% (754 trades)
+   11h: 49.1% (758 trades)
+   12h: 47.2% (735 trades)
+   13h: 52.2% (724 trades)
+   14h: 51.2% (774 trades)
+   15h: 47.0% (776 trades)
+   16h: 51.7% (731 trades)
+   17h: 53.1% (708 trades)
+   18h: 49.9% (753 trades)
+   19h: 45.9% (732 trades)
+   20h: 45.8% (727 trades)
+   21h: 46.6% (731 trades)
+   22h: 48.1% (729 trades)
+   23h: 44.4% (741 trades)
+
+3. ANÁLISE DE RISCO (Baseado em 18062 trades com métricas)
+   MFE Médio (Potencial de Lucro): 1.29%
+   MAE Médio (Drawdown Médio):     1.17%
+
+   Simulação de Stop Loss (Se tivéssemos stopado em X%):
+   Stop 0.3% -> Win Rate: 24.10%
+   Stop 0.5% -> Win Rate: 30.78%
+   Stop 0.8% -> Win Rate: 36.53%
+   Stop 1.0% -> Win Rate: 38.81%
+   Stop 1.5% -> Win Rate: 42.44%
+   Stop 2.0% -> Win Rate: 44.36%

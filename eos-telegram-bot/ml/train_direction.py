@@ -28,8 +28,10 @@ from sklearn.metrics import (
 )
 
 # Configuração
-ML_DIR = '/app/data/ml'
-MODEL_DIR = '/app/data/ml/models'
+import os
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+ML_DIR = os.path.join(SCRIPT_DIR, '..', 'data', 'ml')
+MODEL_DIR = os.path.join(SCRIPT_DIR, '..', 'data', 'ml', 'models')
 
 # Hiperparâmetros XGBoost (baseline conservador)
 XGB_PARAMS = {

@@ -1,0 +1,13 @@
+RELATÓRIO DE ANÁLISE V4 (REGIME BASED)
+======================================
+
+1. ESTRATÉGIA TRENDING (ADX > 25)
+   Best Train: Stop 1.5xATR | TP 3.0xATR | E=-0.23%
+   Validation: E=-0.19% | WR=25.6% (Train WR=19.6%)
+   Status: ❌ FAIL
+
+2. ESTRATÉGIA RANGING (ADX < 20)
+   Best Train: Stop 0.5xATR | TP 1.5xATR | E=-0.14%
+   Validation: E=-0.14% | WR=7.6% (Train WR=8.3%)
+   Status: ❌ FAIL
+

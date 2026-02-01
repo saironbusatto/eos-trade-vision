@@ -197,26 +197,55 @@ def should_execute_trade(signal_data: dict, min_score: int = 70) -> dict:
     return ml_engine.predict(signal_data, min_score)
 
 
+    def validate_features(self, signal_data: dict) -> list:
+        """Valida se todas as features necessárias estão presentes"""
+        if not self.is_loaded:
+            self.load_models()
+        
+        missing = []
+        if self.direction_metadata:
+            required = self.direction_metadata.get('feature_cols', [])
+            for feat in required:
+                if feat not in signal_data and feat not in ['hour_sin', 'hour_cos', 'dow_sin', 'dow_cos']:
+                    # Features cíclicas são geradas internamente, as outras devem vir no payload
+                    missing.append(feat)
+        return missing
+
 if __name__ == '__main__':
-    # Teste
-    print("Testando inferência ML...")
+    import sys
     
-    test_signal = {
-        'f_smart_money': 0.7,
-        'f_price_context': 0.5,
-        'f_imbalance': 0.6,
-        'f_absorption': 0.4,
-        'f_trend': 0.8,
-        'f_momentum': 0.6,
-        'f_volume': 0.7,
-        'score': 75,
-        'hour_utc': 14,
-        'day_of_week': 2,
-        'volume_ratio': 1.5,
-        'trend': 0.8,
-        'momentum': 0.6,
-        'price_change_24h': 2.5
-    }
-    
-    result = should_execute_trade(test_signal)
-    print(json.dumps(result, indent=2))
+    # Modo CLI: Lê JSON do stdin e imprime JSON no stdout
+    try:
+        # Ler entrada (pode ser multiline ou single line)
+        input_data = sys.stdin.read()
+        if not input_data.strip():
+            print(json.dumps({"error": "Empty input"}))
+            sys.exit(1)
+            
+        signal_data = json.loads(input_data)
+        
+        # Validar features
+        missing_features = ml_engine.validate_features(signal_data)
+        if missing_features:
+            print(json.dumps({
+                "should_trade": False, 
+                "direction": "NO-TRADE", 
+                "confidence": 0,
+                "reasons": [f"Missing features: {missing_features}"]
+            }))
+            sys.exit(0)
+            
+        # Executar predição
+        # Nota: min_score pode vir no payload ou ser padrão
+        min_score = signal_data.get('min_score', 70)
+        result = ml_engine.predict(signal_data, min_score)
+        
+        # Output JSON puro
+        print(json.dumps(result))
+        
+    except json.JSONDecodeError:
+        print(json.dumps({"error": "Invalid JSON input"}))
+        sys.exit(1)
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+        sys.exit(1)

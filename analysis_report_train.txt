@@ -1,0 +1,15 @@
+RELATÓRIO DE TREINO (Até 2026-01-23 16:22:40)
+========================================
+Top Pares: ['DUSKUSDT', 'FOGOUSDT', 'SUIUSDT', 'USD1USDT', 'ZECUSDT']
+Top Horas: [0, 13, 14, 16, 17]
+
+Otimização de Stop (Score >= 6):
+   stop  win_rate  expectation   max_dd  max_streak  n_trades
+0   0.5  0.348837    -0.085163   81.430          25       430
+1   0.8  0.395349    -0.142709  108.250          22       430
+2   1.0  0.427907    -0.181698  122.635          22       430
+3   1.5  0.474419    -0.321802  184.675          17       430
+4   2.0  0.488372    -0.533163  271.085          15       430
+5   2.5  0.509302    -0.723163  353.605          14       430
+
+🏆 Melhor Config: Stop 0.5% | E=-0.09%

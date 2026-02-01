@@ -6,6 +6,7 @@ import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import { telegram } from "./telegram";
 import { trendingScanner } from "./trendingScanner";
+import { getDataService } from "./engine";
 import type { TradingSignal, AlertMessage } from "./types";
 
 const app = express();
@@ -36,10 +37,37 @@ const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
 app.get("/health", async (_req: Request, res: Response) => {
     const telegramStatus = await telegram.testConnection();
 
+    // Get DataEngine status
+    const dataService = getDataService();
+    const engineStatus: Record<string, any> = {};
+
+    const defaultSymbols = [
+        'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT',
+        'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT', 'DOTUSDT'
+    ];
+
+    for (const symbol of defaultSymbols) {
+        const status = dataService.getStatus(symbol);
+        if (status) {
+            engineStatus[symbol] = {
+                state: status.state,
+                coverage: Math.round(status.coverage),
+                trades: status.count
+            };
+        }
+    }
+
+    const liveCount = Object.values(engineStatus).filter((s: any) => s.state === 'LIVE_OK').length;
+
     res.json({
         status: "ok",
         timestamp: new Date().toISOString(),
         telegram: telegramStatus,
+        engine: {
+            liveSymbols: liveCount,
+            totalSymbols: Object.keys(engineStatus).length,
+            symbols: engineStatus
+        }
     });
 });
 
