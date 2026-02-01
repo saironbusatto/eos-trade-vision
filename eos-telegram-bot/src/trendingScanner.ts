@@ -496,7 +496,8 @@ export class TrendingScanner {
                 ? ((signal.take_profit - currentPrice) / signal.entry_price * 100).toFixed(2)
                 : ((currentPrice - signal.take_profit) / signal.entry_price * 100).toFixed(2);
 
-            message += `${emoji} *#${signal.id} ${symbol}* - ${ageMinutes}min\n`;
+            const direction = signal.action === 'BUY' ? '🟩 LONG' : '🟥 SHORT';
+            message += `${emoji} *#${signal.id} ${symbol}* ${direction} - ${ageMinutes}min\n`;
             message += `Atual: ${formatPrice(currentPrice)} (${profitStr})\n`;
             message += `Stop: ${distanceToStop}% | Alvo: ${distanceToTarget}% | Fecha: ${45 - ageMinutes}min\n\n`;
         }
