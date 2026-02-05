@@ -3,7 +3,8 @@ export const translations = {
         // Header
         nav: {
             features: "Recursos",
-            specs: "Especificações",
+            specs: "Especificações", // User removed this in previous turn, keeping removed or re-adding? User ignored it in this prompt but previous turn removed it. I will keep it removed based on general intent, but if I replace the whole block I should respect the previous state? The file view shows it present in the definitions but removed in the component. Actually checking the file view of Translations TS... it has "specs", "api", "docs". I should leave them here but they are unused in Header.tsx. Wait, the user said "No texto... mudar para..." implies modifying existing. I'll focus on the requested changes.
+            // Actually, keep it consistent.
             api: "API",
             docs: "Documentação",
             getStarted: "Começar",
@@ -11,72 +12,96 @@ export const translations = {
 
         // Hero Section
         hero: {
-            badge: "GERAÇÃO DE SINAIS ALGORÍTMICOS",
-            headline1: "Um Olho.",
-            headline2: "Precisão Infinita.",
-            description: "EOS processa o ruído do mercado com latência sub-milissegundo, entregando sinais de entrada e saída de alta fidelidade através do nosso motor algorítmico proprietário. Construído para traders que exigem precisão.",
-            ctaPrimary: "Receba os sinais",
-            ctaSecondary: "Ver Documentação",
-            stat1Label: "Latência de Sinal",
-            stat2Label: "SLA de Uptime",
-            stat3Label: "Cobertura de Mercado",
+            badge: "Sinais para iniciantes (com regra): entrada, stop e alvo.",
+            headline1: "Um sinal.",
+            headline2: "Um plano. Menos emoção.",
+            description: "EOS filtra o ruído do mercado e entrega sinais objetivos: quando entrar, onde sair (stop) e onde realizar (alvo). Feito para iniciantes que querem operar com processo, não com achismo.",
+            ctaPrimary: "Entrar no canal grátis no Telegram",
+            ctaSub: "Grátis por enquanto. Sem cartão. Você sai quando quiser.", // New key for microcopy
+            ctaSecondary: "Ver Documentação", // Not used explicitly in request but keeping safe
+
+            // New Metric Values (formerly hardcoded)
+            stat1Value: "Plano completo",
+            stat1Label: "Entrada + Stop + Alvo",
+            stat2Value: "Transparência",
+            stat2Label: "Desempenho passado ≠ garantia",
+            stat3Value: "Rotina",
+            stat3Label: "Sinais + explicação rápida",
         },
 
         // Features
         features: {
-            title: "Arquitetura Técnica V2",
-            subtitle: "Quatro pilares de engenharia de alta fidelidade potencializando o AutoTrader com IA.",
+            title: "Arquitetura Técnica V2", // Unused in UI
+            subtitle: "Como o EOS encontra sinais (sem complicar).", // User didn't ask to change subtitle?? Wait. "No título... mudar para...". Did not specify subtitle change but the specific section "Quatro pilares..." -> "Como o EOS...". I assume title replaces the subtitle?
+            // "No título 'Quatro pilares de engenharia...' mudar para: 'Como o EOS encontra sinais (sem complicar).'"
+            // In the file, "Title" is "Arquitetura Técnica V2" and "Subtitle" is "Quatro pilares...".
+            // The user request says: No título “Quatro pilares de engenharia... IA.” mudar para: “Como o EOS encontra sinais (sem complicar).”
+            // Use implied logic: The visible big text is what they want changed. I will put the new text in proper place.
             cards: [
                 {
-                    title: "Sentimento IA",
-                    subtitle: "Processamento LLM",
-                    description: "Análise de notícias em tempo real via modelos avançados da OpenAI. Filtramos ruído B2B para identificar impactos reais no mercado antes do preço reagir.",
+                    title: "Notícias (filtradas) → impacto no preço.",
+                    subtitle: "Sentimento IA", // Keeping original title as subtitle or just using what user gave? 
+                    // Request: Pilar 1: “Sentimento IA” -> No título “Sentimento IA / Processamento LLM” mudar para: “Notícias (filtradas) → impacto no preço.”
+                    description: "O bot filtra notícias e destaca o que tende a mexer com o mercado. Você recebe o sinal já com contexto curto (para aprender enquanto opera).",
                     specs: [
-                        "Modelagem GPT-4o",
-                        "Score de Impacto (1-5)",
-                        "Filtro de Relevância B2B",
+                        "Filtro de notícia",
+                        "Score de impacto",
+                        "Contexto em 1 linha",
                     ],
                 },
                 {
-                    title: "Motor OFA",
-                    subtitle: "Order Flow Analysis",
-                    description: "Análise profunda de fluxo de ordens buscando confluência entre Smart Money, Absorções e Imbalances de Volume para entradas precisas.",
+                    title: "Fluxo e liquidez (onde o mercado ‘puxa’).",
+                    subtitle: "Motor OFA",
+                    description: "O EOS procura confluências no fluxo (absorções e desequilíbrios) para evitar entradas aleatórias. Quando não há sinal claro, a melhor operação é não operar.",
                     specs: [
-                        "Smart Money Delta",
-                        "Detecção de Absorção",
-                        "Imbalance de Volume",
+                        "Confluência de fluxo",
+                        "Absorção",
+                        "Desequilíbrio de volume",
                     ],
                 },
                 {
-                    title: "IA Gating",
-                    subtitle: "ML Inference",
-                    description: "Todo sinal é validado por modelos de Machine Learning em Python. O AutoTrader executa apenas quando há confluência técnica e estatística.",
+                    title: "Validação do sinal (só entra quando faz sentido).",
+                    subtitle: "IA Gating",
+                    description: "Cada sinal passa por validações estatísticas e técnicas. O objetivo é reduzir trade por impulso e manter consistência de processo.",
                     specs: [
-                        "Validação por Modelo ML",
-                        "Estratégia Time-Based",
-                        "Execução Automatizada",
+                        "Validação estatística",
+                        "Regras por janela de tempo",
+                        "Execução (opcional)",
                     ],
                 },
                 {
-                    title: "PaperWallet",
-                    subtitle: "Simulação de Risco",
-                    description: "Teste suas estratégias sem risco real. Nossa carteira virtual simula taxas, slippage e PnL dinâmico com precisão institucional.",
+                    title: "Treine sem risco (modo simulação).",
+                    subtitle: "PaperWallet",
+                    description: "Antes de colocar dinheiro, treine em simulação. Você aprende a executar entrada/stop/alvo sem pressão e entende taxas e slippage na prática.",
                     specs: [
-                        "Simulação de Taxas/Slippage",
-                        "PnL em Tempo Real",
-                        "Trade Sem Risco",
+                        "Taxas e slippage",
+                        "PnL na simulação",
+                        "Treino sem risco",
                     ],
                 },
             ],
         },
 
+        // Personal Results Section (New)
+        results: {
+            title: "Resultado real (pessoal)",
+            description: "Rodei a estratégia por ~2 meses e fechei +55% no período. Desempenho passado não garante resultados futuros; risco é alto.",
+            cta: "Entrar no canal grátis no Telegram",
+        },
+
+        // Order Book
+        orderBook: {
+            title: "Mercado ao vivo (referência)",
+            helper: "O foco do canal é o sinal com plano (entrada/stop/alvo). O book aqui é apenas suporte visual.",
+        },
+
         // Footer
         footer: {
             brand: "Um Produto s-iron.tech",
-            riskDisclosure: "Divulgação de Riscos",
+            riskDisclosure: "Aviso de Risco (leia antes de operar)", // Changed title
             privacyPolicy: "Política de Privacidade",
             copyright: "Todos os direitos reservados.",
-            riskWarning: "Negociar instrumentos financeiros envolve alto nível de risco e pode não ser adequado para todos os investidores. Desempenho passado não é indicativo de resultados futuros. EOS fornece sinais apenas para fins informativos e não constitui aconselhamento financeiro. Você deve considerar cuidadosamente seus objetivos de investimento e tolerância ao risco antes de usar sistemas de trading algorítmico.",
+            riskWarning: "Use apenas capital de risco e opere com gestão de risco. Negociar instrumentos financeiros envolve alto nível de risco e pode não ser adequado para todos os investidores. Desempenho passado não é indicativo de resultados futuros. EOS fornece sinais apenas para fins informativos e não constitui aconselhamento financeiro. Você deve considerar cuidadosamente seus objetivos de investimento e tolerância ao risco antes de usar sistemas de trading algorítmico.", // Added start text
         },
 
         // Chat Widget

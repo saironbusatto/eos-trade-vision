@@ -63,30 +63,36 @@ const HeroSection = () => {
           </p>
 
           {/* CTAs */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-in-delay-3">
+          <div className="flex flex-col items-center justify-center gap-4 animate-fade-in-delay-3">
             <a
               href="https://t.me/EoS_Evilbot"
               target="_blank"
               rel="noopener noreferrer"
-              className="btn-primary group inline-flex items-center justify-center px-8 py-6 rounded-lg font-bold text-lg"
+              className="btn-primary group inline-flex items-center justify-center px-8 py-6 rounded-lg font-bold text-lg w-full max-w-sm"
             >
               {t.hero.ctaPrimary}
               <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </a>
+            {/* Microcopy */}
+            <p className="text-xs text-muted-foreground/80">{t.hero.ctaSub}</p>
           </div>
 
           {/* Stats - Redesigned Metrics */}
-          <div className="grid grid-cols-3 gap-8 mt-16 pt-16 border-t border-border/30 animate-fade-in-delay-3">
-            <div className="metric-box text-center md:text-left">
-              <div className="metric-value">&lt;1ms</div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-16 pt-16 border-t border-border/30 animate-fade-in-delay-3">
+            <div className="metric-box text-center">
+              <div className="metric-value text-xl md:text-2xl mb-2">{t.hero.stat1Value}</div>
               <div className="metric-label">{t.hero.stat1Label}</div>
             </div>
-            <div className="metric-box text-center md:text-left">
-              <div className="metric-value">99.97%</div>
-              <div className="metric-label">{t.hero.stat2Label}</div>
+            <div className="metric-box text-center">
+              <div className="metric-value text-xl md:text-2xl mb-2">{t.hero.stat2Value}</div>
+              <div className="metric-label">
+                <a href="#risk" className="hover:text-primary transition-colors underline decoration-dotted">
+                  {t.hero.stat2Label}
+                </a>
+              </div>
             </div>
-            <div className="metric-box text-center md:text-left">
-              <div className="metric-value">24/7</div>
+            <div className="metric-box text-center">
+              <div className="metric-value text-xl md:text-2xl mb-2">{t.hero.stat3Value}</div>
               <div className="metric-label">{t.hero.stat3Label}</div>
             </div>
           </div>

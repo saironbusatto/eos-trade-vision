@@ -10,7 +10,7 @@ const POPULAR_PAIRS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT"];
 const POLL_INTERVAL_MS = 2000; // Update every 2 seconds
 
 export function OrderBookWidget({ defaultSymbol = "BTCUSDT" }: OrderBookProps) {
-    const { language } = useLanguage();
+    const { language, t } = useLanguage();
     const [symbol, setSymbol] = useState(defaultSymbol);
     const [orderBook, setOrderBook] = useState<OrderBook | null>(null);
     const [isConnected, setIsConnected] = useState(false);
@@ -77,19 +77,26 @@ export function OrderBookWidget({ defaultSymbol = "BTCUSDT" }: OrderBookProps) {
             <div className="absolute inset-0 bg-gradient-to-b from-background via-secondary/10 to-background" />
 
             <div className="container relative z-10 mx-auto px-6">
-                {/* Header */}
                 <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-8">
-                    <div className="flex items-center gap-4">
-                        <h2 className="text-2xl md:text-3xl font-bold text-foreground">
-                            {texts.title}
-                        </h2>
-                        <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-mono ${isConnected
-                            ? "bg-green-500/10 text-green-400 border border-green-500/30"
-                            : "bg-yellow-500/10 text-yellow-400 border border-yellow-500/30"
-                            }`}>
-                            <span className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-400 animate-pulse" : "bg-yellow-400"}`} />
-                            {isConnected ? texts.live : texts.connecting}
+                    <div className="md:w-auto w-full"> {/* Container for alignment */}
+                        <div className="flex items-center gap-4 mb-2">
+                            {/* @ts-ignore */}
+                            <h2 className="text-2xl md:text-3xl font-bold text-foreground">
+                                {t.orderBook?.title || "Mercado ao vivo (referência)"}
+                            </h2>
+                            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-mono ${isConnected
+                                ? "bg-green-500/10 text-green-400 border border-green-500/30"
+                                : "bg-yellow-500/10 text-yellow-400 border border-yellow-500/30"
+                                }`}>
+                                <span className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-400 animate-pulse" : "bg-yellow-400"}`} />
+                                {isConnected ? texts.live : texts.connecting}
+                            </div>
                         </div>
+                        {/* Helper Text */}
+                        {/* @ts-ignore */}
+                        <p className="text-sm text-muted-foreground">
+                            {t.orderBook?.helper || "O foco do canal é o sinal com plano (entrada/stop/alvo)."}
+                        </p>
                     </div>
 
                     {/* Symbol Selector */}
