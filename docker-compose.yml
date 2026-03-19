@@ -20,7 +20,7 @@ services:
       dockerfile: Dockerfile
     container_name: eos-gateway
     env_file:
-      - ./eos-iq-bot/.env # Manter env antigo por enquanto (tokens)
+      - ./eos-telegram-bot/.env
     volumes:
       # Apenas Crypto Data
       - ./eos-telegram-bot/data:/app/data-crypto

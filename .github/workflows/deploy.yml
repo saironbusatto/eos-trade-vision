@@ -6,6 +6,9 @@ on:
       - main
     paths:
       - 'eos-telegram-bot/**'
+      - 'docker-compose.yml'
+      - 'scripts/**'
+      - '.github/workflows/deploy.yml'
 
 jobs:
   deploy:
@@ -19,8 +22,27 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /home/ec2-user/eos-bot
+            set -eu
+
+            if [ -d /home/ec2-user/eos-telegram-bot ]; then
+              APP_DIR=/home/ec2-user/eos-telegram-bot
+            else
+              APP_DIR=/home/ec2-user/eos-bot
+            fi
+
+            cd "$APP_DIR"
             git pull origin main 2>/dev/null || true
-            cd /home/ec2-user/eos-bot
-            npm install
-            pm2 restart eos-bot
+
+            if [ -f package-lock.json ]; then
+              npm ci --omit=dev
+            else
+              npm install --omit=dev
+            fi
+
+            pm2 restart eos-bot --update-env || pm2 start dist/index.js --name eos-bot
+
+            if [ -f scripts/deploy_post_cleanup.sh ]; then
+              sh scripts/deploy_post_cleanup.sh "$APP_DIR"
+            else
+              echo "[deploy] scripts/deploy_post_cleanup.sh not found; skipping cleanup"
+            fi
