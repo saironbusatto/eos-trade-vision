@@ -88,6 +88,39 @@ export interface MLTrainingRecord {
     fed_stance: string | null;
 }
 
+export interface EdgeMatrixCell {
+    hour_utc: number;
+    action: 'BUY' | 'SELL';
+    trades: number;
+    wins: number;
+    losses: number;
+    win_rate: number;
+    win_rate_ci95_low: number;
+    win_rate_ci95_high: number;
+    expectancy: number;
+    std_dev: number;
+    expectancy_ci95_low: number;
+    expectancy_ci95_high: number;
+    avg_win: number;
+    avg_loss: number;
+    profit_factor: number;
+}
+
+const Z_95 = 1.959963984540054;
+
+function wilson95(wins: number, n: number): { low: number; high: number } {
+    if (n <= 0) return { low: 0, high: 0 };
+    const p = wins / n;
+    const z2 = Z_95 * Z_95;
+    const den = 1 + z2 / n;
+    const center = (p + z2 / (2 * n)) / den;
+    const margin = (Z_95 * Math.sqrt((p * (1 - p) + z2 / (4 * n)) / n)) / den;
+    return {
+        low: Math.max(0, center - margin),
+        high: Math.min(1, center + margin)
+    };
+}
+
 // ========== SCHEMA ==========
 
 function initSchema(): void {
@@ -174,6 +207,12 @@ function initSchema(): void {
         CREATE INDEX IF NOT EXISTS idx_signals_result ON signals(result);
         CREATE INDEX IF NOT EXISTS idx_checkpoints_signal ON price_checkpoints(signal_id);
 
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
         -- ==========================================
         -- FASE 3: ALTERNATIVE DATA (NEWS)
         -- ==========================================
@@ -204,6 +243,9 @@ function initSchema(): void {
             FOREIGN KEY (news_item_id) REFERENCES news_items(id),
             UNIQUE(news_item_id, model_used, prompt_version) -- Garante idempotência
         );
+
+        CREATE INDEX IF NOT EXISTS idx_news_signals_available_impact
+            ON news_signals(available_at, impact_rating);
     `);
 
     // ==========================================
@@ -234,6 +276,7 @@ function initSchema(): void {
             leverage REAL DEFAULT 1.0,
             stop_loss REAL,
             take_profit REAL,
+            status TEXT DEFAULT 'OPEN',
             entry_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (account_id) REFERENCES paper_accounts(id)
         )
@@ -253,7 +296,53 @@ function initSchema(): void {
         )
     `).run();
 
+    db.prepare(`
+        CREATE TABLE IF NOT EXISTS paper_autotrader_settings (
+            user_id TEXT PRIMARY KEY,
+            username TEXT,
+            enabled INTEGER NOT NULL DEFAULT 0,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `).run();
+
+    db.prepare(`
+        CREATE TABLE IF NOT EXISTS paper_autotrader_executions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            signal_id INTEGER NOT NULL,
+            user_id TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            reason TEXT,
+            executed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(signal_id, user_id)
+        )
+    `).run();
+
     console.log('[SQLite] Schema initialized');
+
+    // Backward-compatible schema migrations for legacy paper tables
+    const ensureColumn = (table: string, column: string, definition: string) => {
+        const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+        if (!cols.some(c => c.name === column)) {
+            db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+        }
+    };
+
+    // paper_positions legacy compatibility
+    ensureColumn('paper_positions', 'stop_loss', 'REAL');
+    ensureColumn('paper_positions', 'take_profit', 'REAL');
+    ensureColumn('paper_positions', 'status', "TEXT DEFAULT 'OPEN'");
+    ensureColumn('paper_positions', 'entry_at', "DATETIME DEFAULT CURRENT_TIMESTAMP");
+
+    // paper_trades legacy compatibility
+    ensureColumn('paper_trades', 'account_id', 'INTEGER');
+    ensureColumn('paper_trades', 'symbol', 'TEXT');
+    ensureColumn('paper_trades', 'side', 'TEXT');
+    ensureColumn('paper_trades', 'entry_price', 'REAL');
+    ensureColumn('paper_trades', 'size', 'REAL');
+    ensureColumn('paper_trades', 'pnl_gross', 'REAL');
+    ensureColumn('paper_trades', 'slippage_cost', 'REAL');
+    ensureColumn('paper_trades', 'pnl_net', 'REAL');
+    ensureColumn('paper_trades', 'opened_at', 'DATETIME');
 }
 
 // Initialize on import
@@ -266,6 +355,97 @@ try {
 // ========== SIGNAL CRUD ==========
 
 export const sqliteDatabase = {
+    getStatsPhaseTag(): string {
+        const raw = process.env.STATS_PHASE_TAG?.trim();
+        if (!raw) return 'fase jim compound v1';
+        return raw;
+    },
+
+    getStatsBaselineKey(phaseTag?: string): string {
+        const tag = (phaseTag ?? this.getStatsPhaseTag()).trim();
+        return `stats_baseline_at:${tag}`;
+    },
+
+    getActiveStrategyVersion(): string {
+        const strategy = process.env.ACTIVE_STRATEGY_VERSION?.trim();
+        return strategy && strategy.length > 0 ? strategy : 'v3.0';
+    },
+
+    getStatsBaselineAt(phaseTag?: string): string | null {
+        const tag = phaseTag ?? this.getStatsPhaseTag();
+        const key = this.getStatsBaselineKey(tag);
+
+        const row = db
+            .prepare("SELECT value FROM app_settings WHERE key = ? LIMIT 1")
+            .get(key) as { value: string } | undefined;
+
+        if (row?.value) {
+            return row.value;
+        }
+
+        // Backward compatibility: keep reading legacy key only for default phase.
+        if (tag === 'default') {
+            const legacy = db
+                .prepare("SELECT value FROM app_settings WHERE key = 'stats_baseline_at' LIMIT 1")
+                .get() as { value: string } | undefined;
+            return legacy?.value ?? null;
+        }
+
+        // New explicit phase with no baseline yet: initialize from "now"
+        // so counters start from this phase inception.
+        return this.resetStatsBaselineNow(tag);
+    },
+
+    getAppSetting(key: string): string | null {
+        const row = db
+            .prepare("SELECT value FROM app_settings WHERE key = ? LIMIT 1")
+            .get(key) as { value: string } | undefined;
+
+        return row?.value ?? null;
+    },
+
+    setAppSetting(key: string, value: string): void {
+        db.prepare(`
+            INSERT INTO app_settings (key, value, updated_at)
+            VALUES (?, ?, datetime('now'))
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = datetime('now')
+        `).run(key, value);
+    },
+
+    deleteAppSetting(key: string): void {
+        db.prepare("DELETE FROM app_settings WHERE key = ?").run(key);
+    },
+
+    setStatsBaselineAt(isoTimestamp: string, phaseTag?: string): string {
+        const parsed = new Date(isoTimestamp);
+        if (Number.isNaN(parsed.getTime())) {
+            throw new Error('Invalid stats baseline timestamp');
+        }
+
+        const key = this.getStatsBaselineKey(phaseTag);
+        const normalized = parsed.toISOString();
+        db.prepare(`
+            INSERT INTO app_settings (key, value, updated_at)
+            VALUES (?, ?, datetime('now'))
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = datetime('now')
+        `).run(key, normalized);
+
+        return normalized;
+    },
+
+    resetStatsBaselineNow(phaseTag?: string): string {
+        return this.setStatsBaselineAt(new Date().toISOString(), phaseTag);
+    },
+
+    clearStatsBaseline(phaseTag?: string): void {
+        const key = this.getStatsBaselineKey(phaseTag);
+        db.prepare("DELETE FROM app_settings WHERE key = ?").run(key);
+    },
+
     // Insert new signal
     insertSignal(signal: {
         symbol: string;
@@ -296,6 +476,8 @@ export const sqliteDatabase = {
             ? signal.entry_price * (1 + (signal.target_percent || 2) / 100)
             : signal.entry_price * (1 - (signal.target_percent || 2) / 100));
 
+        const strategyVersion = this.getActiveStrategyVersion();
+
         const stmt = db.prepare(`
             INSERT INTO signals (
                 symbol, action, entry_price, stop_loss, take_profit, score,
@@ -303,18 +485,19 @@ export const sqliteDatabase = {
                 f_trend, f_momentum, f_volume,
                 volume_ratio, trend, momentum, price_change_24h,
                 strategy_version
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'v3.0')
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         const result = stmt.run(
             signal.symbol, signal.action, signal.entry_price, stopLoss, takeProfit, signal.score,
             signal.f_smart_money, signal.f_price_context, signal.f_imbalance, signal.f_absorption,
             signal.f_trend, signal.f_momentum, signal.f_volume,
-            signal.volume_ratio, signal.trend, signal.momentum, signal.price_change_24h
+            signal.volume_ratio, signal.trend, signal.momentum, signal.price_change_24h,
+            strategyVersion
         );
 
         const id = result.lastInsertRowid as number;
-        console.log(`[SQLite] Signal #${id} saved: ${signal.symbol} ${signal.action} @ $${signal.entry_price} (v3.0)`);
+        console.log(`[SQLite] Signal #${id} saved: ${signal.symbol} ${signal.action} @ $${signal.entry_price} (${strategyVersion})`);
         return id;
     },
 
@@ -455,22 +638,75 @@ export const sqliteDatabase = {
         this.closeSignal(id, exitPrice, result, profitPercent, macroData);
     },
 
-    // Get statistics (v3.0 only - nova estratégia)
-    getStats(): { signals: number; pending: number; wins: number; losses: number; win_rate: number; avg_profit: number } {
-        // Total e pending de todas as versões
-        const total = db.prepare('SELECT COUNT(*) as count FROM signals').get() as { count: number };
-        const pending = db.prepare("SELECT COUNT(*) as count FROM signals WHERE result = 'PENDING'").get() as { count: number };
+    // Get statistics for active strategy with optional baseline reset window
+    getStats(): {
+        phase_tag: string;
+        strategy_version: string;
+        baseline_at: string | null;
+        signals: number;
+        pending: number;
+        wins: number;
+        losses: number;
+        win_rate: number;
+        avg_profit: number;
+    } {
+        const strategyVersion = this.getActiveStrategyVersion();
+        const phaseTag = this.getStatsPhaseTag();
+        const baselineAt = this.getStatsBaselineAt(phaseTag);
 
-        // Wins e losses apenas da v3.0 (nova estratégia)
-        const wins = db.prepare("SELECT COUNT(*) as count FROM signals WHERE result = 'WIN' AND strategy_version = 'v3.0'").get() as { count: number };
-        const losses = db.prepare("SELECT COUNT(*) as count FROM signals WHERE result = 'LOSS' AND strategy_version = 'v3.0'").get() as { count: number };
+        let totalSql = 'SELECT COUNT(*) as count FROM signals WHERE strategy_version = ?';
+        const totalParams: string[] = [strategyVersion];
+        if (baselineAt) {
+            totalSql += " AND datetime(created_at) >= datetime(?)";
+            totalParams.push(baselineAt);
+        }
 
-        const avgProfit = db.prepare('SELECT AVG(final_profit) as avg FROM ml_training').get() as { avg: number | null };
+        let pendingSql = "SELECT COUNT(*) as count FROM signals WHERE result = 'PENDING' AND strategy_version = ?";
+        const pendingParams: string[] = [strategyVersion];
+        if (baselineAt) {
+            pendingSql += " AND datetime(created_at) >= datetime(?)";
+            pendingParams.push(baselineAt);
+        }
+
+        let winsSql = "SELECT COUNT(*) as count FROM signals WHERE result = 'WIN' AND strategy_version = ?";
+        const winsParams: string[] = [strategyVersion];
+        if (baselineAt) {
+            winsSql += " AND datetime(COALESCE(validated_at, created_at)) >= datetime(?)";
+            winsParams.push(baselineAt);
+        }
+
+        let lossesSql = "SELECT COUNT(*) as count FROM signals WHERE result = 'LOSS' AND strategy_version = ?";
+        const lossesParams: string[] = [strategyVersion];
+        if (baselineAt) {
+            lossesSql += " AND datetime(COALESCE(validated_at, created_at)) >= datetime(?)";
+            lossesParams.push(baselineAt);
+        }
+
+        let avgProfitSql = `
+            SELECT AVG(m.final_profit) as avg
+            FROM ml_training m
+            INNER JOIN signals s ON s.id = m.signal_id
+            WHERE s.strategy_version = ?
+        `;
+        const avgProfitParams: string[] = [strategyVersion];
+        if (baselineAt) {
+            avgProfitSql += " AND datetime(COALESCE(s.validated_at, s.created_at)) >= datetime(?)";
+            avgProfitParams.push(baselineAt);
+        }
+
+        const total = db.prepare(totalSql).get(...totalParams) as { count: number };
+        const pending = db.prepare(pendingSql).get(...pendingParams) as { count: number };
+        const wins = db.prepare(winsSql).get(...winsParams) as { count: number };
+        const losses = db.prepare(lossesSql).get(...lossesParams) as { count: number };
+        const avgProfit = db.prepare(avgProfitSql).get(...avgProfitParams) as { avg: number | null };
 
         const totalClosed = wins.count + losses.count;
         const winRate = totalClosed > 0 ? (wins.count / totalClosed) * 100 : 0;
 
         return {
+            phase_tag: phaseTag,
+            strategy_version: strategyVersion,
+            baseline_at: baselineAt,
             signals: total.count,
             pending: pending.count,
             wins: wins.count,
@@ -478,6 +714,95 @@ export const sqliteDatabase = {
             win_rate: winRate,
             avg_profit: avgProfit.avg ?? 0
         };
+    },
+
+    getEdgeMatrix(minTrades: number = 80): EdgeMatrixCell[] {
+        const strategyVersion = this.getActiveStrategyVersion();
+        const rows = db.prepare(`
+            SELECT
+                CAST(strftime('%H', s.created_at) AS INTEGER) AS hour_utc,
+                s.action AS action,
+                COUNT(*) AS trades,
+                SUM(CASE WHEN s.result = 'WIN' THEN 1 ELSE 0 END) AS wins,
+                SUM(CASE WHEN s.result = 'LOSS' THEN 1 ELSE 0 END) AS losses,
+                AVG(m.final_profit) AS expectancy,
+                AVG(CASE WHEN m.final_profit > 0 THEN m.final_profit END) AS avg_win,
+                AVG(CASE WHEN m.final_profit < 0 THEN m.final_profit END) AS avg_loss,
+                SUM(CASE WHEN m.final_profit > 0 THEN m.final_profit ELSE 0 END) AS gross_win,
+                ABS(SUM(CASE WHEN m.final_profit < 0 THEN m.final_profit ELSE 0 END)) AS gross_loss,
+                SUM(m.final_profit * m.final_profit) AS sum_sq
+            FROM signals s
+            INNER JOIN ml_training m ON m.signal_id = s.id
+            WHERE s.strategy_version = ?
+              AND s.result IN ('WIN', 'LOSS')
+              AND m.final_profit IS NOT NULL
+            GROUP BY hour_utc, s.action
+            HAVING COUNT(*) >= ?
+            ORDER BY hour_utc ASC, s.action ASC
+        `).all(strategyVersion, minTrades) as Array<{
+            hour_utc: number;
+            action: 'BUY' | 'SELL';
+            trades: number;
+            wins: number;
+            losses: number;
+            expectancy: number;
+            avg_win: number | null;
+            avg_loss: number | null;
+            gross_win: number | null;
+            gross_loss: number | null;
+            sum_sq: number | null;
+        }>;
+
+        return rows.map((row) => {
+            const n = row.trades;
+            const mean = Number(row.expectancy ?? 0);
+            const sumSq = Number(row.sum_sq ?? 0);
+            const sampleVar = n > 1 ? Math.max(0, (sumSq - n * mean * mean) / (n - 1)) : 0;
+            const stdDev = Math.sqrt(sampleVar);
+            const se = n > 0 ? stdDev / Math.sqrt(n) : 0;
+            const ciLow = mean - Z_95 * se;
+            const ciHigh = mean + Z_95 * se;
+            const wr = n > 0 ? (row.wins / n) : 0;
+            const wrCi = wilson95(row.wins, n);
+            const grossWin = Number(row.gross_win ?? 0);
+            const grossLoss = Number(row.gross_loss ?? 0);
+
+            return {
+                hour_utc: row.hour_utc,
+                action: row.action,
+                trades: n,
+                wins: row.wins,
+                losses: row.losses,
+                win_rate: wr * 100,
+                win_rate_ci95_low: wrCi.low * 100,
+                win_rate_ci95_high: wrCi.high * 100,
+                expectancy: mean,
+                std_dev: stdDev,
+                expectancy_ci95_low: ciLow,
+                expectancy_ci95_high: ciHigh,
+                avg_win: Number(row.avg_win ?? 0),
+                avg_loss: Number(row.avg_loss ?? 0),
+                profit_factor: grossLoss > 0 ? grossWin / grossLoss : (grossWin > 0 ? 999 : 0)
+            };
+        });
+    },
+
+    getDirectionalHourStats(minTrades: number = 80): Array<{
+        hour_utc: number;
+        action: 'BUY' | 'SELL';
+        trades: number;
+        wins: number;
+        losses: number;
+        win_rate: number;
+    }> {
+        return this.getEdgeMatrix(minTrades).map((row) => ({
+            hour_utc: row.hour_utc,
+            action: row.action,
+            trades: row.trades,
+            wins: row.wins,
+            losses: row.losses,
+            win_rate: row.win_rate
+        }));
     },
 
     // Export ML data as CSV
@@ -496,6 +821,11 @@ export const sqliteDatabase = {
     // Get all ML training records
     getMLRecords(): MLTrainingRecord[] {
         return db.prepare('SELECT * FROM ml_training ORDER BY id').all() as MLTrainingRecord[];
+    },
+
+    getMLRecordCount(): number {
+        const row = db.prepare('SELECT COUNT(*) as count FROM ml_training').get() as { count: number };
+        return row?.count ?? 0;
     },
 
     // ========== ALTERNATIVE DATA (NEWS) ==========
@@ -603,12 +933,14 @@ export const sqliteDatabase = {
     },
 
     updateAccountBalance(userId: string, balance: number, equity: number): void {
-        const stmt = db.prepare('UPDATE paper_accounts SET balance = ?, equity = ?, updated_at = datetime("now") WHERE user_id = ?');
+        const stmt = db.prepare("UPDATE paper_accounts SET balance = ?, equity = ?, updated_at = datetime('now') WHERE user_id = ?");
         stmt.run(balance, equity, userId);
     },
 
     getOpenPositions(accountId: number): any[] {
-        return db.prepare('SELECT * FROM paper_positions WHERE account_id = ?').all(accountId);
+        return db
+            .prepare("SELECT *, entry_at AS opened_at FROM paper_positions WHERE account_id = ? AND COALESCE(status, 'OPEN') = 'OPEN'")
+            .all(accountId);
     },
 
     openPosition(pos: {
@@ -623,8 +955,8 @@ export const sqliteDatabase = {
     }): number {
         const stmt = db.prepare(`
             INSERT INTO paper_positions (
-                account_id, symbol, side, entry_price, size, leverage, stop_loss, take_profit
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                account_id, symbol, side, entry_price, size, leverage, stop_loss, take_profit, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'OPEN')
         `);
         const info = stmt.run(
             pos.account_id, pos.symbol, pos.side, pos.entry_price, pos.size,
@@ -634,7 +966,7 @@ export const sqliteDatabase = {
     },
 
     closePosition(id: number): void {
-        db.prepare('DELETE FROM paper_positions WHERE id = ?').run(id);
+        db.prepare("UPDATE paper_positions SET status = 'CLOSED' WHERE id = ?").run(id);
     },
 
     insertTrade(trade: {
@@ -656,28 +988,32 @@ export const sqliteDatabase = {
         const stmt = db.prepare(`
             INSERT INTO paper_trades (
                 position_id, account_id, symbol, side, entry_price, exit_price, size,
-                pnl_gross, slippage_cost, pnl_net, pnl_percent, close_reason, execution_model, opened_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                pnl, pnl_gross, slippage_cost, pnl_net, pnl_percent, close_reason, execution_model, opened_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         stmt.run(
             trade.position_id, trade.account_id, trade.symbol, trade.side,
             trade.entry_price, trade.exit_price, trade.size,
-            trade.pnl_gross, trade.slippage_cost, trade.pnl_net, trade.pnl_percent,
+            trade.pnl_net, trade.pnl_gross, trade.slippage_cost, trade.pnl_net, trade.pnl_percent,
             trade.close_reason, trade.execution_model, trade.opened_at
         );
         console.log(`[SQLite] Paper Trade saved: ${trade.symbol} PnL: $${trade.pnl_net.toFixed(2)}`);
     },
 
     getTradeStats(accountId: number): { wins: number; losses: number; total_pnl: number; win_rate: number } {
-        const trades = db.prepare('SELECT pnl_net FROM paper_trades WHERE account_id = ?').all(accountId) as { pnl_net: number }[];
+        const cols = db.prepare('PRAGMA table_info(paper_trades)').all() as Array<{ name: string }>;
+        const pnlCol = cols.some(c => c.name === 'pnl_net') ? 'pnl_net' : 'pnl';
+        const trades = db
+            .prepare(`SELECT ${pnlCol} as pnl_value FROM paper_trades WHERE account_id = ?`)
+            .all(accountId) as { pnl_value: number }[];
 
         let wins = 0;
         let losses = 0;
         let total_pnl = 0;
 
         for (const t of trades) {
-            total_pnl += t.pnl_net;
-            if (t.pnl_net > 0) wins++;
+            total_pnl += t.pnl_value;
+            if (t.pnl_value > 0) wins++;
             else losses++; // Ties count as loss or ignore? Counting as loss for conservative stats
         }
 
@@ -685,5 +1021,49 @@ export const sqliteDatabase = {
         const win_rate = total > 0 ? (wins / total) * 100 : 0;
 
         return { wins, losses, total_pnl, win_rate };
+    },
+
+    setAutoTraderEnabled(userId: string, username: string, enabled: boolean): void {
+        const stmt = db.prepare(`
+            INSERT INTO paper_autotrader_settings (user_id, username, enabled, updated_at)
+            VALUES (?, ?, ?, datetime('now'))
+            ON CONFLICT(user_id) DO UPDATE SET
+                username = excluded.username,
+                enabled = excluded.enabled,
+                updated_at = datetime('now')
+        `);
+        stmt.run(userId, username, enabled ? 1 : 0);
+    },
+
+    isAutoTraderEnabled(userId: string): boolean {
+        const row = db
+            .prepare('SELECT enabled FROM paper_autotrader_settings WHERE user_id = ?')
+            .get(userId) as { enabled: number } | undefined;
+        return row?.enabled === 1;
+    },
+
+    getAutoTraderEnabledUsers(): Array<{ user_id: string; username: string; account_id: number }> {
+        const stmt = db.prepare(`
+            SELECT s.user_id, COALESCE(s.username, a.username, 'Trader') AS username, a.id AS account_id
+            FROM paper_autotrader_settings s
+            INNER JOIN paper_accounts a ON a.user_id = s.user_id
+            WHERE s.enabled = 1 AND a.status = 'ACTIVE'
+        `);
+        return stmt.all() as Array<{ user_id: string; username: string; account_id: number }>;
+    },
+
+    hasAutoTraderExecution(signalId: number, userId: string): boolean {
+        const row = db
+            .prepare('SELECT 1 as ok FROM paper_autotrader_executions WHERE signal_id = ? AND user_id = ? LIMIT 1')
+            .get(signalId, userId) as { ok: number } | undefined;
+        return Boolean(row?.ok);
+    },
+
+    markAutoTraderExecution(signalId: number, userId: string, symbol: string, reason: string): void {
+        const stmt = db.prepare(`
+            INSERT OR IGNORE INTO paper_autotrader_executions (signal_id, user_id, symbol, reason)
+            VALUES (?, ?, ?, ?)
+        `);
+        stmt.run(signalId, userId, symbol, reason);
     }
 };

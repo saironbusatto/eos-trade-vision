@@ -111,10 +111,17 @@ app.get('/health', (req, res) => {
 
 // Database Connections
 const path = require('path');
+const fs = require('fs');
 const Database = require('better-sqlite3');
 
 const FOREX_DB = path.resolve(__dirname, 'data', 'eos-iq.db');
-const CRYPTO_DB = path.resolve(__dirname, 'data-crypto', 'eos.db');
+const CRYPTO_DB_CANDIDATES = [
+    path.resolve(__dirname, 'data-crypto', 'eos.db'),
+    path.resolve(__dirname, '..', 'data', 'eos.db'),
+    path.resolve(__dirname, '..', 'eos-telegram-bot', 'data', 'eos.db')
+];
+const CRYPTO_DB = CRYPTO_DB_CANDIDATES.find((dbPath) => fs.existsSync(dbPath)) || CRYPTO_DB_CANDIDATES[0];
+console.log(`[Gateway] Using crypto DB: ${CRYPTO_DB}`);
 
 // Helper para conectar e executar query segura
 function queryDB(dbPath, sql, params = []) {
@@ -141,17 +148,117 @@ function queryDB(dbPath, sql, params = []) {
     }
 }
 
+const Z95 = 1.959963984540054;
+
+function wilson95(wins, n) {
+    if (!n || n <= 0) return { low: 0, high: 0 };
+    const p = wins / n;
+    const z2 = Z95 * Z95;
+    const den = 1 + z2 / n;
+    const center = (p + z2 / (2 * n)) / den;
+    const margin = (Z95 * Math.sqrt((p * (1 - p) + z2 / (4 * n)) / n)) / den;
+    return {
+        low: Math.max(0, center - margin),
+        high: Math.min(1, center + margin)
+    };
+}
+
+function computeCryptoEdgeStats(minTrades = 80) {
+    const rows = queryDB(
+        CRYPTO_DB,
+        `
+        SELECT
+            CAST(strftime('%H', s.created_at) AS INTEGER) AS hour_utc,
+            s.action AS action,
+            COUNT(*) AS trades,
+            SUM(CASE WHEN s.result = 'WIN' THEN 1 ELSE 0 END) AS wins,
+            SUM(CASE WHEN s.result = 'LOSS' THEN 1 ELSE 0 END) AS losses,
+            AVG(m.final_profit) AS expectancy,
+            AVG(CASE WHEN m.final_profit > 0 THEN m.final_profit END) AS avg_win,
+            AVG(CASE WHEN m.final_profit < 0 THEN m.final_profit END) AS avg_loss,
+            SUM(CASE WHEN m.final_profit > 0 THEN m.final_profit ELSE 0 END) AS gross_win,
+            ABS(SUM(CASE WHEN m.final_profit < 0 THEN m.final_profit ELSE 0 END)) AS gross_loss,
+            SUM(m.final_profit * m.final_profit) AS sum_sq
+        FROM signals s
+        INNER JOIN ml_training m ON m.signal_id = s.id
+        WHERE s.result IN ('WIN', 'LOSS')
+          AND s.strategy_version = 'v3.0'
+          AND m.final_profit IS NOT NULL
+        GROUP BY hour_utc, s.action
+        HAVING COUNT(*) >= ?
+        ORDER BY hour_utc ASC, s.action ASC
+        `,
+        [minTrades]
+    );
+
+    const cells = rows.map((row) => {
+        const n = Number(row.trades || 0);
+        const mean = Number(row.expectancy || 0);
+        const sumSq = Number(row.sum_sq || 0);
+        const sampleVar = n > 1 ? Math.max(0, (sumSq - n * mean * mean) / (n - 1)) : 0;
+        const stdDev = Math.sqrt(sampleVar);
+        const se = n > 0 ? stdDev / Math.sqrt(n) : 0;
+        const expectancyCi95Low = mean - Z95 * se;
+        const expectancyCi95High = mean + Z95 * se;
+        const wr = n > 0 ? Number(row.wins || 0) / n : 0;
+        const wrCi = wilson95(Number(row.wins || 0), n);
+        const grossWin = Number(row.gross_win || 0);
+        const grossLoss = Number(row.gross_loss || 0);
+
+        return {
+            hour_utc: Number(row.hour_utc),
+            action: row.action,
+            trades: n,
+            wins: Number(row.wins || 0),
+            losses: Number(row.losses || 0),
+            win_rate: wr * 100,
+            win_rate_ci95_low: wrCi.low * 100,
+            win_rate_ci95_high: wrCi.high * 100,
+            expectancy: mean,
+            std_dev: stdDev,
+            expectancy_ci95_low: expectancyCi95Low,
+            expectancy_ci95_high: expectancyCi95High,
+            avg_win: Number(row.avg_win || 0),
+            avg_loss: Number(row.avg_loss || 0),
+            profit_factor: grossLoss > 0 ? grossWin / grossLoss : (grossWin > 0 ? 999 : 0)
+        };
+    });
+
+    return {
+        min_trades: minTrades,
+        cells,
+        generated_at: new Date().toISOString()
+    };
+}
+
 // GET /api/stats/analytics - Endpoint Unificado
 app.get('/api/gateway/analytics', (req, res) => {
     try {
         // Query Params
         const { bot, strategy, startDate, endDate } = req.query;
+        const edgeMinTradesRaw = Number(req.query.edgeMinTrades);
+        const edgeMinTrades = Number.isFinite(edgeMinTradesRaw) && edgeMinTradesRaw > 0
+            ? Math.floor(edgeMinTradesRaw)
+            : 80;
         // bot: 'forex', 'crypto', 'all' (default)
         // strategy: 'v2.0', 'v3.0', 'all'
         // timeframe filtering logic implementation needed
 
         const forexSignals = [];
         const cryptoSignals = [];
+        let cryptoBaselineAt = process.env.CRYPTO_STATS_BASELINE_AT || null;
+
+        try {
+            const baselineRows = queryDB(
+                CRYPTO_DB,
+                "SELECT value FROM app_settings WHERE key = 'stats_baseline_at' LIMIT 1"
+            );
+            if (baselineRows.length > 0 && baselineRows[0].value) {
+                cryptoBaselineAt = baselineRows[0].value;
+            }
+        } catch (error) {
+            console.warn('[Analytics] Failed to load crypto baseline from app_settings:', error.message);
+        }
 
         // 1. Fetch Forex Data
         if (bot !== 'crypto') {
@@ -175,7 +282,15 @@ app.get('/api/gateway/analytics', (req, res) => {
         // 2. Fetch Crypto Data
         if (bot !== 'forex') {
             // Nota: Schema do crypto é diferente (symbol, action, etc)
-            const rawCrypto = queryDB(CRYPTO_DB, "SELECT * FROM signals WHERE result IN ('WIN', 'LOSS')");
+            let cryptoSql = "SELECT * FROM signals WHERE result IN ('WIN', 'LOSS')";
+            const cryptoParams = [];
+
+            if (cryptoBaselineAt) {
+                cryptoSql += " AND datetime(COALESCE(validated_at, created_at)) >= datetime(?)";
+                cryptoParams.push(cryptoBaselineAt);
+            }
+
+            const rawCrypto = queryDB(CRYPTO_DB, cryptoSql, cryptoParams);
             rawCrypto.forEach(s => {
                 cryptoSignals.push({
                     type: 'crypto',
@@ -236,11 +351,17 @@ app.get('/api/gateway/analytics', (req, res) => {
             strategyStats[strat] = calculateStats(stratSignals);
         });
 
+        const edgeStats = bot === 'forex' ? { min_trades: edgeMinTrades, cells: [], generated_at: new Date().toISOString() } : computeCryptoEdgeStats(edgeMinTrades);
+
         res.json({
             summary: calculateStats(allSignals),
             forex: calculateStats(allSignals.filter(s => s.type === 'forex')),
             crypto: calculateStats(allSignals.filter(s => s.type === 'crypto')),
             signals: allSignals,
+            edgeStats,
+            meta: {
+                cryptoBaselineAt
+            },
             filters: {
                 strategies,
                 timeframes

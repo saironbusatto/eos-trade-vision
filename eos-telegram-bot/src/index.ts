@@ -9,6 +9,8 @@ import { trendingScanner } from "./trendingScanner";
 import { getDataService } from "./engine";
 import { NewsCollector } from "./services/NewsCollector";
 import { SentimentAnalyzer } from "./services/SentimentAnalyzer";
+import { mlRecalibrationService } from "./services/MLRecalibrationService";
+import { sqliteDatabase } from "./sqliteDatabase";
 import type { TradingSignal, AlertMessage } from "./types";
 
 const app = express();
@@ -71,6 +73,46 @@ app.get("/health", async (_req: Request, res: Response) => {
             symbols: engineStatus
         }
     });
+});
+
+// Public stats snapshot for dashboard integrations
+app.get("/api/stats", (req: Request, res: Response) => {
+    const stats = sqliteDatabase.getStats();
+    const { phase_tag, ...publicStats } = stats;
+    const minTradesRaw = Number(req.query.minTrades);
+    const minTrades = Number.isFinite(minTradesRaw) && minTradesRaw > 0 ? Math.floor(minTradesRaw) : 80;
+    const edgeMatrix = sqliteDatabase.getEdgeMatrix(minTrades);
+    res.json({
+        success: true,
+        ...publicStats,
+        edge: {
+            min_trades: minTrades,
+            cells: edgeMatrix
+        }
+    });
+});
+
+// Reset stats window (logical reset; does not delete historical data)
+app.post("/api/stats/reset", authMiddleware, (req: Request, res: Response) => {
+    try {
+        const body = req.body as { baselineAt?: string; phaseTag?: string };
+        const phaseTag = body?.phaseTag?.trim() || undefined;
+        const baselineAt = body?.baselineAt
+            ? sqliteDatabase.setStatsBaselineAt(body.baselineAt, phaseTag)
+            : sqliteDatabase.resetStatsBaselineNow(phaseTag);
+
+        const stats = sqliteDatabase.getStats();
+        const { phase_tag, ...publicStats } = stats;
+        res.json({
+            success: true,
+            message: "Stats baseline updated",
+            baselineAt,
+            stats: publicStats
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to reset stats baseline";
+        res.status(400).json({ success: false, error: message });
+    }
 });
 
 // Send trading signal
@@ -143,4 +185,8 @@ app.listen(PORT, () => {
     const sentimentAnalyzer = new SentimentAnalyzer();
     sentimentAnalyzer.start(); // Uses default 60s polling
     console.log("🧠 SentimentAnalyzer started - Analyzing market sentiment...");
+
+    // Start weekly ML recalibration workflow (walk-forward guarded)
+    mlRecalibrationService.start();
+    console.log("🤖 MLRecalibrationService started - Weekly auto retraining enabled");
 });

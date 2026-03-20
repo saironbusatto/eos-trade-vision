@@ -18,6 +18,17 @@ interface TradeFeedback {
 }
 
 export class PaperTradingService {
+    private async getCurrentPrice(symbol: string): Promise<number | null> {
+        try {
+            const url = `https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`;
+            const response = await fetch(url);
+            const data = await response.json() as { price?: string };
+            const price = Number(data.price);
+            return Number.isFinite(price) ? price : null;
+        } catch {
+            return null;
+        }
+    }
 
     // Inicia ou Reseta conta do usuário
     public startAccount(userId: string, username: string, initialBalance: number): string {
@@ -92,9 +103,14 @@ ${openPositionsText}
 
     public executeEntry(userId: string, signal: {
         symbol: string, action: 'BUY' | 'SELL', price: number, stopLoss: number, takeProfit: number, leverage?: number
-    }) {
+    }): boolean {
         const account = sqliteDatabase.getAccount(userId);
-        if (!account) return;
+        if (!account) return false;
+
+        const existingPositions = sqliteDatabase.getOpenPositions(account.id);
+        if (existingPositions.some((p: any) => p.symbol === signal.symbol)) {
+            return false;
+        }
 
         const leverage = signal.leverage || 3; // Default 3x (Safe Base)
 
@@ -103,8 +119,10 @@ ${openPositionsText}
         // Vamos arriscar 10% do SALDO em margem.
         // Nocional = (Saldo * 0.1) * Leverage.
         const marginAmount = account.balance * 0.1;
+        if (marginAmount <= 0) return false;
         const notionalValue = marginAmount * leverage;
         const size = notionalValue / signal.price;
+        if (!Number.isFinite(size) || size <= 0) return false;
 
         sqliteDatabase.openPosition({
             account_id: account.id,
@@ -116,6 +134,7 @@ ${openPositionsText}
             stop_loss: signal.stopLoss,
             take_profit: signal.takeProfit
         });
+        return true;
     }
 
     public executeExit(userId: string, symbol: string, exitPrice: number, reason: string): TradeFeedback | null {
@@ -217,5 +236,52 @@ _${getRandomQuote()}_
                 pnlPercent
             }
         };
+    }
+
+    public async monitorAndClosePositions(userId: string): Promise<TradeFeedback[]> {
+        const account = sqliteDatabase.getAccount(userId);
+        if (!account) return [];
+
+        const positions = sqliteDatabase.getOpenPositions(account.id);
+        if (positions.length === 0) return [];
+
+        const closed: TradeFeedback[] = [];
+
+        for (const position of positions) {
+            const currentPrice = await this.getCurrentPrice(position.symbol);
+            if (!currentPrice) continue;
+
+            const stopLoss = Number(position.stop_loss);
+            const takeProfit = Number(position.take_profit);
+            if (!Number.isFinite(stopLoss) || !Number.isFinite(takeProfit)) continue;
+
+            let shouldClose = false;
+            let reason = "AUTO_CLOSE";
+
+            if (position.side === 'LONG') {
+                if (currentPrice <= stopLoss) {
+                    shouldClose = true;
+                    reason = 'STOP_LOSS';
+                } else if (currentPrice >= takeProfit) {
+                    shouldClose = true;
+                    reason = 'TAKE_PROFIT';
+                }
+            } else {
+                if (currentPrice >= stopLoss) {
+                    shouldClose = true;
+                    reason = 'STOP_LOSS';
+                } else if (currentPrice <= takeProfit) {
+                    shouldClose = true;
+                    reason = 'TAKE_PROFIT';
+                }
+            }
+
+            if (!shouldClose) continue;
+
+            const feedback = this.executeExit(userId, position.symbol, currentPrice, reason);
+            if (feedback) closed.push(feedback);
+        }
+
+        return closed;
     }
 }

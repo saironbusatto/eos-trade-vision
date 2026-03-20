@@ -19,6 +19,22 @@ export class AutoTrader {
         this.paperTrading = new PaperTradingService();
     }
 
+    public enableForUser(userId: string, username: string): void {
+        sqliteDatabase.setAutoTraderEnabled(userId, username, true);
+    }
+
+    public disableForUser(userId: string, username: string): void {
+        sqliteDatabase.setAutoTraderEnabled(userId, username, false);
+    }
+
+    public isEnabledForUser(userId: string): boolean {
+        return sqliteDatabase.isAutoTraderEnabled(userId);
+    }
+
+    public getEnabledUsersCount(): number {
+        return sqliteDatabase.getAutoTraderEnabledUsers().length;
+    }
+
     public start(intervalMs: number = 60000) {
         if (this.isRunning) return;
         this.isRunning = true;
@@ -35,16 +51,36 @@ export class AutoTrader {
     }
 
     private async runCycle() {
-        if (!process.env.OPENAI_API_KEY) return; // Só roda se tiver IA ativada para validar news
-
         try {
+            const enabledUsers = sqliteDatabase.getAutoTraderEnabledUsers();
+            if (enabledUsers.length === 0) return;
+
+            // 0. Manage open positions first (auto TP/SL)
+            for (const user of enabledUsers) {
+                const closedTrades = await this.paperTrading.monitorAndClosePositions(user.user_id);
+                for (const closed of closedTrades) {
+                    console.log(
+                        `[AutoTrader] ✅ Closed ${closed.tradeDetails.symbol} for ${user.username} | PnL ${closed.tradeDetails.pnlNet.toFixed(2)}`
+                    );
+                }
+            }
+
+            const sentimentEnabled =
+                process.env.ENABLE_SENTIMENT_ANALYSIS === 'true' &&
+                Boolean(process.env.OPENAI_API_KEY);
+
             // 1. Buscar Notícias de Alta Convicção Recentes (últimos 60 min, Impacto >= 4)
-            const sentimentSignals = sqliteDatabase.getRecentSentimentSignals(60, 4);
+            const sentimentSignals = sentimentEnabled
+                ? sqliteDatabase.getRecentSentimentSignals(60, 4)
+                : [];
 
             // 2. Buscar Sinais Técnicos Recentes (últimos 15 min, ainda PENDING)
-            const technicalSignals = sqliteDatabase.getPendingSignals(15);
+            const minSignalAgeMin = Number(process.env.AUTO_TRADER_MIN_SIGNAL_AGE_MIN ?? 0);
+            const technicalSignals = sqliteDatabase.getPendingSignals(
+                Number.isFinite(minSignalAgeMin) ? Math.max(0, minSignalAgeMin) : 0
+            );
 
-            if (sentimentSignals.length === 0 && technicalSignals.length === 0) return;
+            if (technicalSignals.length === 0) return;
 
             // console.log(`[AutoTrader] Scanning... Found ${sentimentSignals.length} high-impact news & ${technicalSignals.length} technical signals.`);
 
@@ -56,9 +92,7 @@ export class AutoTrader {
                 // Tenta achar notícia corroborando
                 const matchingNews = this.findMatchingNews(techSignal, sentimentSignals);
 
-                if (matchingNews) {
-                    await this.executeStrategy(techSignal, matchingNews);
-                }
+                await this.executeStrategyForUsers(techSignal, matchingNews, enabledUsers);
             }
 
         } catch (err: any) {
@@ -114,51 +148,52 @@ export class AutoTrader {
         return null;
     }
 
-    private async executeStrategy(techSignal: Signal, news: any) {
-        // Verificar se usuário tem conta principal (ou rodar para todos)
-        // MVP: Assume 'admin_user' ou pega todos accounts
-        // Vamos usar um user ID 'autotrader_bot' para testes ou iterar todos
-        // O PaperTradingService atual suporta multi-user. Vamos operar na conta de teste padrão se houver.
+    private async executeStrategyForUsers(
+        techSignal: Signal,
+        news: any | null,
+        enabledUsers: Array<{ user_id: string; username: string; account_id: number }>
+    ) {
+        const leverage = this.calculateLeverage(news);
 
-        // Simulação: Vamos criar uma conta 'AutoTrader' se não existir e operar nela
-        const botUserId = 'autotrader_host';
-        const account = sqliteDatabase.getAccount(botUserId);
+        for (const user of enabledUsers) {
+            if (sqliteDatabase.hasAutoTraderExecution(techSignal.id, user.user_id)) {
+                continue;
+            }
 
-        if (!account) {
-            sqliteDatabase.createAccount(botUserId, 'AutoTrader AI', 1000); // Start with $1k
+            const existingPos = sqliteDatabase.getOpenPositions(user.account_id);
+            if (existingPos.find((p: any) => p.symbol === techSignal.symbol)) {
+                continue;
+            }
+
+            const executed = this.paperTrading.executeEntry(user.user_id, {
+                symbol: techSignal.symbol,
+                action: techSignal.action,
+                price: techSignal.entry_price,
+                stopLoss: techSignal.stop_loss,
+                takeProfit: techSignal.take_profit,
+                leverage
+            });
+
+            if (!executed) continue;
+
+            const reason = news
+                ? `confluence: tech=${techSignal.score}, sentiment=${news.sentiment_score}`
+                : `technical-only: score=${techSignal.score}`;
+
+            sqliteDatabase.markAutoTraderExecution(techSignal.id, user.user_id, techSignal.symbol, reason);
+            console.log(
+                `[AutoTrader] 🚀 ${user.username} (${user.user_id}) -> ${techSignal.action} ${techSignal.symbol} | ${reason} | ${leverage}x`
+            );
         }
+    }
 
-        // Check deduplication (Já operamos esse sinal específico?)
-        // Simples verificação: Se já tem posição aberta nesse symbol, não aumenta (Pyramiding OFF for MVP)
-        const existingPos = sqliteDatabase.getOpenPositions(sqliteDatabase.getAccount(botUserId).id);
-        if (existingPos.find(p => p.symbol === techSignal.symbol)) return;
+    private calculateLeverage(news: any | null): number {
+        if (!news) return 2; // modo técnico sem notícia: conservador
 
-        // --- CÁLCULO DE ALAVANCAGEM ---
-        let leverage = 3; // Base
+        let leverage = 3;
         const absScore = Math.abs(news.sentiment_score);
-
-        // Escalada de Convicção
-        if (absScore >= 0.9) {
-            leverage = 10; // "Double or Nothing" Max Conviction
-        } else if (absScore >= 0.75) {
-            leverage = 5;  // Strong Conviction
-        }
-
-        console.log(`[AutoTrader] 🚀 EXECUTING TRADE: ${techSignal.action} ${techSignal.symbol} | Leverage: ${leverage}x`);
-        console.log(`[AutoTrader] Confluece: Tech Score ${techSignal.score} + News Score ${news.sentiment_score} ("${news.title}")`);
-
-        // Executar
-        this.paperTrading.executeEntry(botUserId, {
-            symbol: techSignal.symbol,
-            action: techSignal.action,
-            price: techSignal.entry_price,
-            stopLoss: techSignal.stop_loss,
-            takeProfit: techSignal.take_profit,
-            leverage: leverage
-        });
-
-        // (Opcional) Notificar Telegram aqui se tivesse acesso ao bot instance
-        // Como o TelegramListener é quem escuta, podemos ter um EventBus ou o AutoTrader retornar algo.
-        // Por enquanto, log no console basta. 
+        if (absScore >= 0.9) return 10;
+        if (absScore >= 0.75) return 5;
+        return leverage;
     }
 }

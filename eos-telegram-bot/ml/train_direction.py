@@ -13,6 +13,7 @@ import numpy as np
 import json
 from pathlib import Path
 import pickle
+from sklearn.model_selection import TimeSeriesSplit
 
 try:
     from xgboost import XGBClassifier
@@ -35,7 +36,7 @@ MODEL_DIR = os.path.join(SCRIPT_DIR, '..', 'data', 'ml', 'models')
 
 # Hiperparâmetros XGBoost (baseline conservador)
 XGB_PARAMS = {
-    'objective': 'multi:softmax',
+    'objective': 'multi:softprob',
     'num_class': 3,
     'max_depth': 4,          # Shallow para evitar overfit
     'learning_rate': 0.1,
@@ -63,33 +64,41 @@ def load_datasets():
 def prepare_data(df, feature_cols, label_col):
     """Prepara X e y para treinamento"""
     X = df[feature_cols].copy()
-    y = df[label_col].copy()
-    
+    for col in feature_cols:
+        X[col] = pd.to_numeric(X[col], errors='coerce').fillna(0.0).astype(float)
+    y = pd.to_numeric(df[label_col], errors='coerce').fillna(0).astype(int)
+
     # Mapear labels para 0, 1, 2 (XGBoost requer)
     # -1 (SHORT) -> 0, 0 (NO-TRADE) -> 1, 1 (LONG) -> 2
-    y_mapped = y.map({-1: 0, 0: 1, 1: 2})
+    y_mapped = y.map({-1: 0, 0: 1, 1: 2}).astype(int)
     
     return X, y_mapped
+
+def compute_class_weights(y):
+    counts = y.value_counts().to_dict()
+    n_classes = len(counts)
+    total = len(y)
+    return {cls: total / (n_classes * count) for cls, count in counts.items() if count > 0}
 
 def train_model(X_train, y_train, X_val, y_val):
     """Treina modelo XGBoost com early stopping"""
     model = XGBClassifier(**XGB_PARAMS)
+    class_weights = compute_class_weights(y_train)
+    sample_weight = y_train.map(class_weights)
     
     # Treinar com early stopping
     model.fit(
         X_train, y_train,
+        sample_weight=sample_weight,
         eval_set=[(X_val, y_val)],
         verbose=False
     )
     
-    return model
+    return model, class_weights
 
 def evaluate_model(model, X, y, dataset_name='Test'):
     """Avalia modelo e retorna métricas"""
     y_pred = model.predict(X)
-    
-    # Mapear de volta para labels originais
-    label_map = {0: 'SHORT', 1: 'NO-TRADE', 2: 'LONG'}
     
     acc = accuracy_score(y, y_pred)
     f1_macro = f1_score(y, y_pred, average='macro')
@@ -103,7 +112,7 @@ def evaluate_model(model, X, y, dataset_name='Test'):
     print(f"F1 Weighted: {f1_weighted:.4f}")
     
     print(f"\nClassification Report:")
-    print(classification_report(y, y_pred, target_names=['SHORT', 'NO-TRADE', 'LONG']))
+    print(classification_report(y, y_pred, target_names=['SHORT', 'NO-TRADE', 'LONG'], zero_division=0))
     
     print(f"\nConfusion Matrix:")
     cm = confusion_matrix(y, y_pred)
@@ -131,7 +140,7 @@ def get_feature_importance(model, feature_cols):
     return importance_df.to_dict('records')
 
 def walk_forward_validation(df, feature_cols, label_col, 
-                           train_days=60, val_days=15, step_days=15):
+                           n_splits=5):
     """
     Walk-forward validation para simular produção.
     Treina em N dias, valida nos próximos M dias, avança step dias.
@@ -140,49 +149,44 @@ def walk_forward_validation(df, feature_cols, label_col,
     print("WALK-FORWARD VALIDATION")
     print("="*60)
     
-    # Assumir que temos ~1000 sinais em ~30 dias = ~33 sinais/dia
-    signals_per_day = 33
-    train_size = train_days * signals_per_day
-    val_size = val_days * signals_per_day
-    step_size = step_days * signals_per_day
-    
+    if len(df) < 500:
+        print("Dataset pequeno para walk-forward robusto, pulando.")
+        return []
+
+    n_splits = min(n_splits, max(2, len(df) // 1500))
+    splitter = TimeSeriesSplit(n_splits=n_splits)
     results = []
-    fold = 0
-    start_idx = 0
-    
-    while start_idx + train_size + val_size <= len(df):
-        fold += 1
-        train_end = start_idx + train_size
-        val_end = train_end + val_size
-        
-        train_df = df.iloc[start_idx:train_end]
-        val_df = df.iloc[train_end:val_end]
-        
+    for fold, (train_idx, val_idx) in enumerate(splitter.split(df), start=1):
+        train_df = df.iloc[train_idx]
+        val_df = df.iloc[val_idx]
+
         X_train, y_train = prepare_data(train_df, feature_cols, label_col)
         X_val, y_val = prepare_data(val_df, feature_cols, label_col)
-        
-        # Treinar (sem early stopping no walk-forward)
+
+        class_weights = compute_class_weights(y_train)
+        sample_weight = y_train.map(class_weights)
         model = XGBClassifier(**XGB_PARAMS)
-        model.fit(X_train, y_train, verbose=False)
+        model.fit(X_train, y_train, sample_weight=sample_weight, verbose=False)
         
         # Avaliar
         y_pred = model.predict(X_val)
         f1 = f1_score(y_val, y_pred, average='macro')
         acc = accuracy_score(y_val, y_pred)
         
-        print(f"Fold {fold}: Train[{start_idx}:{train_end}] Val[{train_end}:{val_end}] | Acc={acc:.3f} F1={f1:.3f}")
+        print(
+            f"Fold {fold}: Train[{train_idx[0]}:{train_idx[-1]}] "
+            f"Val[{val_idx[0]}:{val_idx[-1]}] | Acc={acc:.3f} F1={f1:.3f}"
+        )
         
         results.append({
             'fold': fold,
-            'train_start': start_idx,
-            'train_end': train_end,
-            'val_start': train_end,
-            'val_end': val_end,
+            'train_start': int(train_idx[0]),
+            'train_end': int(train_idx[-1]),
+            'val_start': int(val_idx[0]),
+            'val_end': int(val_idx[-1]),
             'accuracy': acc,
             'f1_macro': f1
         })
-        
-        start_idx += step_size
     
     # Resumo
     avg_acc = np.mean([r['accuracy'] for r in results])
@@ -196,7 +200,7 @@ def walk_forward_validation(df, feature_cols, label_col,
     
     return results
 
-def save_model(model, feature_cols, metrics, output_dir):
+def save_model(model, feature_cols, metrics, output_dir, class_weights):
     """Salva modelo treinado e metadados"""
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     
@@ -211,6 +215,7 @@ def save_model(model, feature_cols, metrics, output_dir):
         'feature_cols': feature_cols,
         'label_mapping': {-1: 0, 0: 1, 1: 2},
         'label_names': {0: 'SHORT', 1: 'NO-TRADE', 2: 'LONG'},
+        'class_weights': class_weights,
         'metrics': metrics,
         'params': XGB_PARAMS
     }
@@ -241,7 +246,8 @@ def main():
     
     # 3. Treinar modelo principal
     print("\n3. Treinando modelo principal...")
-    model = train_model(X_train, y_train, X_val, y_val)
+    model, class_weights = train_model(X_train, y_train, X_val, y_val)
+    print(f"   class_weights: {class_weights}")
     
     # 4. Avaliar
     print("\n4. Avaliando modelo...")
@@ -265,7 +271,7 @@ def main():
         'feature_importance': importance,
         'walk_forward': wf_results
     }
-    save_model(model, feature_cols, metrics, MODEL_DIR)
+    save_model(model, feature_cols, metrics, MODEL_DIR, class_weights)
     
     print("\n" + "="*60)
     print("TREINAMENTO CONCLUÍDO!")

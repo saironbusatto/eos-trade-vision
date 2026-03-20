@@ -29,6 +29,19 @@ python train_direction.py
 python train_gate.py
 ```
 
+### Opções úteis via env
+
+```bash
+# Usar um banco específico (ex.: dump de produção)
+export EOS_DB_PATH=/caminho/para/eos.db
+
+# Label do gate: win (default) ou movement
+export ML_GATE_LABEL_MODE=win
+
+# Threshold da label de direção em %
+export ML_LABEL_THRESHOLD_PCT=0.5
+```
+
 ## Uso em Produção
 
 ```typescript
@@ -53,11 +66,27 @@ if (mlResult.should_trade) {
 }
 ```
 
+### Recalibração automática (walk-forward)
+
+O bot pode executar `build_dataset.py` + `train_gate.py` + `train_direction.py` automaticamente em produção (ciclo semanal por padrão), com rollback caso as métricas piorem.
+
+```bash
+ML_RECALIBRATION_ENABLED=true
+ML_RECALIBRATION_INTERVAL_HOURS=168
+ML_RECALIBRATION_MIN_ML_RECORDS=400
+ML_RECALIBRATION_MAX_F1_DROP=0.03
+```
+
 ## Labels
 
-- **1 (LONG)**: profit_15m > 0.5%
-- **-1 (SHORT)**: profit_15m < -0.5%
-- **0 (NO-TRADE)**: |profit_15m| <= 0.5%
+- **`y_direction`**
+  - `1 (LONG)`: movimento favorece LONG
+  - `-1 (SHORT)`: movimento favorece SHORT
+  - `0 (NO-TRADE)`: movimento pequeno
+- O cálculo ajusta o sinal usando `action` (BUY/SELL), evitando inversão semântica nos exemplos SELL.
+- **`y_trade`** (gate) é configurável:
+  - `win` (default): `1` quando `result == WIN`
+  - `movement`: `1` quando `|signed_profit_target| > threshold`
 
 ## Features
 

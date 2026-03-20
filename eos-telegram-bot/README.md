@@ -1,114 +1,62 @@
-# EoS CRYPTO Bot 🔮
+# EoS Crypto Bot
 
-Sistema de trading algorítmico com **Order Flow Analysis (OFA) real** + **Machine Learning Ensemble** para criptomoedas.
+Backend de sinais cripto com OFA real, filtros estatísticos, ML em produção e recalibração automática.
 
----
+## Stack ativa
 
-## 🎯 Filosofia
+- Node.js + TypeScript
+- SQLite (`data/eos.db`)
+- Telegram Bot API
+- Python ML (`ml/`)
 
-> *"O que o Order Flow fornece ao trader é a capacidade de ficar fora do mercado quando não há razão para negociar."* — **Michael Valtos**
+## Pipeline de decisão (alto nível)
 
-O modelo **não prevê preços**. Ele **filtra sinais ruins** usando Order Flow institucional.
+1. Coleta de microestrutura e candles (Binance)
+2. Pontuação OFA (LONG/SHORT)
+3. Filtro horário-direcional por estatística (win rate + IC95 + expectancy)
+4. Inferência ML (gate + direção)
+5. Score unificado (OFA + ML + Edge + Regime + Sentimento)
+6. Definição de risco dinâmico (stop/target)
+7. Envio do sinal e validação posterior (WIN/LOSS/timeout)
 
----
+## Controle de fase de performance
 
-## 📊 Por que OFA Real Funciona em Crypto
+Contadores de `wins/losses/win_rate` são segmentados por fase no backend:
 
-| Característica | Crypto (Binance) | Vantagem |
-|----------------|------------------|----------|
-| **Mercado** | Centralizado | Order Book público |
-| **Order Book** | ✅ API Binance | Vemos TODAS as ordens |
-| **Trades** | ✅ Tempo real | Buyer/Seller ID |
-| **Volume** | ✅ Real (USD) | Podemos filtrar "Smart Money" |
-| **Level 2** | ✅ Depth data | Imbalances, Absorption |
+- env: `STATS_PHASE_TAG`
+- padrão atual: `fase jim compound v1`
 
-### Vantagem Competitiva
+Isso mantém histórico completo no DB, mas zera a leitura exibida para a fase nova.
+O identificador de fase fica no backend (não é exposto como campo no payload público de `/api/stats`).
 
-Porque temos acesso ao **Order Book real**, podemos calcular:
+## Recalibração automática de modelos
 
-1. **Smart Money Filter** - Filtra trades por tamanho ($500-$100k+)
-2. **Stacked Imbalances** - Detecta ordens agressivas (300%+ ratio)
-3. **Absorption** - Identifica quando instituições estão defendendo níveis
-4. **Delta** - Diferença entre compras e vendas agressivas
+Serviço `MLRecalibrationService` roda em janela configurável e aplica guardrails:
 
----
+- mínimo de dados (`ML_RECALIBRATION_MIN_ML_RECORDS`)
+- métricas mínimas (`ML_RECALIBRATION_MIN_GATE_F1`, `ML_RECALIBRATION_MIN_DIRECTION_F1`)
+- limite de degradação (`ML_RECALIBRATION_MAX_F1_DROP`)
+- rollback automático em falha
 
-## 🧠 Machine Learning v3.0
+## Documentação técnica (TCC)
 
-### Ensemble de 4 Modelos
+Para o racional matemático completo, fórmulas e thresholds:
 
-```
-Sinal OFA → GMM (Regime) → Ensemble (4 modelos) → Threshold 70% → Executar/Rejeitar
-```
+- [docs/ALGORITHM_TCC.md](./docs/ALGORITHM_TCC.md)
+- [docs/DATA_ENGINE.md](./docs/DATA_ENGINE.md)
 
-| Modelo | Peso | Função |
-|--------|------|--------|
-| **XGBoost** | 2x | Gradient boosting otimizado |
-| **LightGBM** | 2x | Versão rápida |
-| **Random Forest** | 1x | Robusto a overfitting |
-| **Gradient Boosting** | 1x | Sklearn clássico |
+## Execução local
 
-### Features (Order Flow Real)
-
-| Feature | Fonte | Descrição |
-|---------|-------|-----------|
-| `f_smart_money` | Order Book | Bias institucional (grandes trades) |
-| `f_imbalance` | Footprint | Força dos imbalances |
-| `f_absorption` | Delta/Volume | Ordens passivas absorvendo |
-| `f_price_context` | VWAP | Distância do preço justo |
-| `f_trend` | EMA | Tendência |
-| `f_momentum` | ROC | Velocidade |
-| `f_volume` | Volume | Volume ratio |
-
-### Decisões Técnicas
-
-| Conceito | Fonte | Por quê? |
-|----------|-------|----------|
-| **Fractional Differentiation** | Kaabar | Estacionariedade sem perder memória |
-| **Triple Barrier Labeling** | López de Prado | WIN=TP, LOSS=SL/Timeout |
-| **TimeSeriesSplit** | Scikit-learn | Evitar look-ahead bias |
-| **GMM Regime Detection** | Ruiz & Chan | Pausar em regimes ruins |
-| **Ensemble Voting** | ML Best Practices | Reduzir variância |
-
----
-
-## 📈 Métricas Atuais
-
-| Score | Trades | Win Rate | Sharpe | Max DD |
-|-------|--------|----------|--------|--------|
-| 40+ | 2166 | 50.6% | 0.01 | 17.0% |
-| 70+ | 591 | 51.3% | 0.53 | 9.8% |
-
-**Com ML Filter (threshold 70%):** Precision ~60%
-
----
-
-## 🏗️ Arquitetura
-
-```
-eos-telegram-bot/
-├── src/
-│   ├── ofa/
-│   │   ├── smartMoneyFilter.ts   # Filtra trades grandes
-│   │   ├── volumeProfile.ts      # VPOC, Value Area
-│   │   ├── footprint.ts          # Bid/Ask analysis
-│   │   ├── imbalanceDetector.ts  # Stacked imbalances
-│   │   └── absorptionDetector.ts # Absorção passiva
-│   ├── mlFilter.ts               # 🧠 Integração ML
-│   ├── trendingScanner.ts        # Scanner principal
-│   └── sqliteDatabase.ts         # Persistência
-└── data/eos.db                   # SQLite
+```bash
+npm install
+npm run build
+npm run dev
 ```
 
----
+## Endpoints principais
 
-## 📚 Referências
-
-- **Michael Valtos** - Order Flow Philosophy
-- **López de Prado** - Triple Barrier, Meta-Labeling
-- **Kaabar** - Fractional Differentiation
-- **Ruiz & Chan** - Regime Detection
-
----
-
-*Powered by s-iron.tech | Estratégia v3.0*
+- `GET /health`
+- `GET /api/stats`
+- `POST /api/stats/reset`
+- `POST /api/signal`
+- `POST /api/alert`

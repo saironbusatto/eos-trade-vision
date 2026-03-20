@@ -70,12 +70,21 @@ def load_datasets():
 def prepare_data(df, feature_cols, label_col='y_trade'):
     """Prepara X e y para treinamento binário"""
     X = df[feature_cols].copy()
-    y = df[label_col].copy()
+    for col in feature_cols:
+        X[col] = pd.to_numeric(X[col], errors='coerce').fillna(0.0).astype(float)
+    y = pd.to_numeric(df[label_col], errors='coerce').fillna(0).astype(int)
     return X, y
 
 def train_model(X_train, y_train, X_val, y_val):
     """Treina modelo binário com early stopping"""
-    model = XGBClassifier(**XGB_PARAMS)
+    pos = int(y_train.sum())
+    neg = int(len(y_train) - pos)
+    scale_pos_weight = (neg / max(pos, 1)) if pos > 0 else 1.0
+
+    params = XGB_PARAMS.copy()
+    params['scale_pos_weight'] = scale_pos_weight
+
+    model = XGBClassifier(**params)
     
     model.fit(
         X_train, y_train,
@@ -83,30 +92,50 @@ def train_model(X_train, y_train, X_val, y_val):
         verbose=False
     )
     
-    return model
+    return model, scale_pos_weight
 
-def find_optimal_threshold(model, X_val, y_val):
+def find_optimal_threshold(model, X_val, y_val, min_coverage=0.05, max_coverage=0.60):
     """
     Encontra threshold ótimo para balancear precision/recall.
-    Para gating, preferimos ALTA PRECISION (evitar falsos positivos).
+    Evita thresholds degenerados com cobertura muito baixa.
     """
     y_proba = model.predict_proba(X_val)[:, 1]
-    
-    best_f1 = 0
-    best_threshold = 0.5
-    
-    for threshold in np.arange(0.3, 0.8, 0.05):
+
+    candidates = []
+    fallback_candidates = []
+
+    for threshold in np.arange(0.05, 0.91, 0.01):
         y_pred = (y_proba >= threshold).astype(int)
-        f1 = f1_score(y_val, y_pred)
-        prec = precision_score(y_val, y_pred)
-        
-        # Preferimos precision > 60% para não deixar passar trades ruins
-        if prec >= 0.6 and f1 > best_f1:
-            best_f1 = f1
-            best_threshold = threshold
-    
-    print(f"\nThreshold ótimo encontrado: {best_threshold:.2f} (F1={best_f1:.3f})")
-    return best_threshold
+        coverage = y_pred.mean()
+        prec = precision_score(y_val, y_pred, zero_division=0)
+        rec = recall_score(y_val, y_pred, zero_division=0)
+        f1 = f1_score(y_val, y_pred, zero_division=0)
+
+        row = {
+            'threshold': float(round(threshold, 2)),
+            'coverage': float(coverage),
+            'precision': float(prec),
+            'recall': float(rec),
+            'f1': float(f1)
+        }
+        fallback_candidates.append(row)
+        if min_coverage <= coverage <= max_coverage:
+            candidates.append(row)
+
+    ranked = candidates if candidates else fallback_candidates
+    ranked = sorted(
+        ranked,
+        key=lambda x: (x['f1'], x['precision'], x['recall']),
+        reverse=True
+    )
+    best = ranked[0]
+
+    print(
+        f"\nThreshold ótimo: {best['threshold']:.2f} | "
+        f"F1={best['f1']:.3f} Precision={best['precision']:.3f} "
+        f"Recall={best['recall']:.3f} Coverage={best['coverage']:.1%}"
+    )
+    return best['threshold']
 
 def evaluate_model(model, X, y, threshold=0.5, dataset_name='Test'):
     """Avalia modelo binário"""
@@ -114,10 +143,13 @@ def evaluate_model(model, X, y, threshold=0.5, dataset_name='Test'):
     y_pred = (y_proba >= threshold).astype(int)
     
     acc = accuracy_score(y, y_pred)
-    prec = precision_score(y, y_pred)
-    rec = recall_score(y, y_pred)
-    f1 = f1_score(y, y_pred)
-    auc = roc_auc_score(y, y_proba)
+    prec = precision_score(y, y_pred, zero_division=0)
+    rec = recall_score(y, y_pred, zero_division=0)
+    f1 = f1_score(y, y_pred, zero_division=0)
+    try:
+        auc = roc_auc_score(y, y_proba)
+    except ValueError:
+        auc = 0.5
     
     # Coverage: % de trades que o modelo deixa passar
     coverage = y_pred.sum() / len(y_pred) * 100
@@ -146,7 +178,7 @@ def evaluate_model(model, X, y, threshold=0.5, dataset_name='Test'):
         'coverage': coverage
     }
 
-def save_model(model, feature_cols, threshold, metrics, output_dir):
+def save_model(model, feature_cols, threshold, metrics, output_dir, label_col, scale_pos_weight):
     """Salva modelo e metadados"""
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     
@@ -157,7 +189,9 @@ def save_model(model, feature_cols, threshold, metrics, output_dir):
     metadata = {
         'model_type': 'XGBClassifier (Binary)',
         'feature_cols': feature_cols,
+        'label_col': label_col,
         'optimal_threshold': threshold,
+        'scale_pos_weight': scale_pos_weight,
         'metrics': metrics,
         'params': XGB_PARAMS
     }
@@ -176,19 +210,22 @@ def main():
     print("\n1. Carregando datasets...")
     train, val, test, metadata = load_datasets()
     feature_cols = metadata['feature_cols']
+    label_col = metadata.get('label_col_gate', 'y_trade')
     
     # 2. Verificar balanceamento de classes
     print("\n2. Distribuição de classes:")
-    print(f"   Train: {train['y_trade'].value_counts().to_dict()}")
+    print(f"   Label: {label_col}")
+    print(f"   Train: {train[label_col].value_counts().to_dict()}")
     
     # 3. Preparar dados
-    X_train, y_train = prepare_data(train, feature_cols)
-    X_val, y_val = prepare_data(val, feature_cols)
-    X_test, y_test = prepare_data(test, feature_cols)
+    X_train, y_train = prepare_data(train, feature_cols, label_col)
+    X_val, y_val = prepare_data(val, feature_cols, label_col)
+    X_test, y_test = prepare_data(test, feature_cols, label_col)
     
     # 4. Treinar modelo
     print("\n4. Treinando gating model...")
-    model = train_model(X_train, y_train, X_val, y_val)
+    model, scale_pos_weight = train_model(X_train, y_train, X_val, y_val)
+    print(f"   scale_pos_weight={scale_pos_weight:.3f}")
     
     # 5. Encontrar threshold ótimo
     print("\n5. Buscando threshold ótimo...")
@@ -202,7 +239,15 @@ def main():
     # 7. Salvar
     print("\n7. Salvando modelo...")
     metrics = {'validation': val_metrics, 'test': test_metrics}
-    save_model(model, feature_cols, optimal_threshold, metrics, MODEL_DIR)
+    save_model(
+        model,
+        feature_cols,
+        optimal_threshold,
+        metrics,
+        MODEL_DIR,
+        label_col,
+        scale_pos_weight
+    )
     
     print("\n" + "="*60)
     print("GATING MODEL TREINADO!")

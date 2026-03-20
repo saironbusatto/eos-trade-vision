@@ -62,6 +62,14 @@ export default function Analytics() {
         return analyticsData.signals;
     };
 
+    const edgeCells: any[] = analyticsData?.edgeStats?.cells || [];
+    const bestEdges = [...edgeCells]
+        .sort((a, b) => (b.expectancy_ci95_low || 0) - (a.expectancy_ci95_low || 0))
+        .slice(0, 8);
+    const worstEdges = [...edgeCells]
+        .sort((a, b) => (a.expectancy_ci95_low || 0) - (b.expectancy_ci95_low || 0))
+        .slice(0, 8);
+
     return (
         <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-blue-500/30">
             <Header />
@@ -152,6 +160,15 @@ export default function Analytics() {
                     )}
                 </div>
 
+                {analyticsData?.meta?.cryptoBaselineAt && (
+                    <div className="bg-blue-950/30 border border-blue-800/40 rounded-lg px-4 py-2 text-sm text-blue-200">
+                        📍 Métricas de Crypto contando desde:{" "}
+                        <span className="font-semibold">
+                            {new Date(analyticsData.meta.cryptoBaselineAt).toLocaleString('pt-BR')}
+                        </span>
+                    </div>
+                )}
+
                 {loading && !analyticsData ? (
                     <div className="flex justify-center py-20">
                         <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
@@ -183,6 +200,45 @@ export default function Analytics() {
                                             </div>
                                         </div>
                                     ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {edgeCells.length > 0 && (
+                            <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
+                                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                    <span className="text-cyan-400">🧮</span> Edge Matrix (Hora UTC x Direção)
+                                </h3>
+                                <p className="text-xs text-slate-400">
+                                    Gate matemático com IC95. Min trades: {analyticsData.edgeStats?.min_trades ?? 80}
+                                </p>
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                    <div className="bg-slate-900/50 rounded-lg border border-slate-700/50 p-4">
+                                        <h4 className="text-sm font-semibold text-emerald-300 mb-3">Top Edges (IC95 Expectancy)</h4>
+                                        <div className="space-y-2">
+                                            {bestEdges.map((cell, i) => (
+                                                <div key={`best-${i}`} className="text-xs text-slate-300 flex justify-between gap-3">
+                                                    <span className="font-mono">{String(cell.hour_utc).padStart(2, '0')}h {cell.action}</span>
+                                                    <span>N={cell.trades}</span>
+                                                    <span>WR {Number(cell.win_rate).toFixed(1)}%</span>
+                                                    <span className="text-emerald-300">IC95 low E {Number(cell.expectancy_ci95_low).toFixed(3)}%</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="bg-slate-900/50 rounded-lg border border-slate-700/50 p-4">
+                                        <h4 className="text-sm font-semibold text-rose-300 mb-3">Weak Edges (Evitar)</h4>
+                                        <div className="space-y-2">
+                                            {worstEdges.map((cell, i) => (
+                                                <div key={`worst-${i}`} className="text-xs text-slate-300 flex justify-between gap-3">
+                                                    <span className="font-mono">{String(cell.hour_utc).padStart(2, '0')}h {cell.action}</span>
+                                                    <span>N={cell.trades}</span>
+                                                    <span>WR {Number(cell.win_rate).toFixed(1)}%</span>
+                                                    <span className="text-rose-300">IC95 low E {Number(cell.expectancy_ci95_low).toFixed(3)}%</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         )}

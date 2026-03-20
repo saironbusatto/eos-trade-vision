@@ -24,25 +24,45 @@ jobs:
           script: |
             set -eu
 
-            if [ -d /home/ec2-user/eos-telegram-bot ]; then
-              APP_DIR=/home/ec2-user/eos-telegram-bot
-            else
-              APP_DIR=/home/ec2-user/eos-bot
+            REPO_DIR=/home/ec2-user/eos-telegram-bot
+            LEGACY_DIR=/home/ec2-user/eos-bot
+            BOT_DIR="$REPO_DIR/eos-telegram-bot"
+
+            if [ ! -d "$REPO_DIR" ]; then
+              REPO_DIR="$LEGACY_DIR"
+              BOT_DIR="$REPO_DIR"
             fi
 
-            cd "$APP_DIR"
-            git pull origin main 2>/dev/null || true
+            cd "$REPO_DIR"
 
-            if [ -f package-lock.json ]; then
-              npm ci --omit=dev
-            else
-              npm install --omit=dev
+            if [ -d .git ]; then
+              git pull --rebase --autostash origin main || {
+                git stash push --include-untracked --message "deploy-autostash-$(date +%Y%m%d%H%M%S)" || true
+                git pull origin main
+              }
             fi
 
-            pm2 restart eos-bot --update-env || pm2 start dist/index.js --name eos-bot
+            if [ ! -d "$BOT_DIR" ]; then
+              BOT_DIR="$REPO_DIR"
+            fi
 
-            if [ -f scripts/deploy_post_cleanup.sh ]; then
-              sh scripts/deploy_post_cleanup.sh "$APP_DIR"
+            if [ -f "$BOT_DIR/package-lock.json" ]; then
+              (cd "$BOT_DIR" && npm ci --omit=dev)
+            else
+              (cd "$BOT_DIR" && npm install --omit=dev)
+            fi
+
+            if [ -f "$LEGACY_DIR/.env" ] && [ ! -f "$REPO_DIR/.env" ]; then
+              cp "$LEGACY_DIR/.env" "$REPO_DIR/.env"
+              chmod 600 "$REPO_DIR/.env" || true
+            fi
+
+            pm2 delete eos-bot >/dev/null 2>&1 || true
+            pm2 start "$BOT_DIR/dist/index.js" --name eos-bot --cwd "$BOT_DIR" --update-env
+            pm2 save
+
+            if [ -f "$REPO_DIR/scripts/deploy_post_cleanup.sh" ]; then
+              sh "$REPO_DIR/scripts/deploy_post_cleanup.sh" "$REPO_DIR"
             else
               echo "[deploy] scripts/deploy_post_cleanup.sh not found; skipping cleanup"
             fi

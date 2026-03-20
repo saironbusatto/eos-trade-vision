@@ -11,17 +11,26 @@
     "hour_sin",
     "hour_cos",
     "dow_sin",
-    "dow_cos"
+    "dow_cos",
+    "volume_ratio",
+    "trend",
+    "momentum",
+    "price_change_24h",
+    "macro_confidence",
+    "fear_greed",
+    "macro_sentiment_encoded",
+    "sp500_trend_encoded",
+    "fed_stance_encoded",
+    "trade_recommendation_encoded"
   ],
   "label_col_direction": "y_direction",
   "label_col_gate": "y_trade",
-  "train_size": 605,
-  "val_size": 130,
-  "test_size": 130,
-  "class_distribution_train": {
-    "0": 548,
-    "1": 32,
-    "-1": 25
-  },
-  "threshold_pct": 0.5
+  "train_size": 0,
+  "val_size": 0,
+  "test_size": 0,
+  "class_distribution_train": {},
+  "gate_distribution_train": {},
+  "threshold_pct": 0.5,
+  "gate_label_mode": "win",
+  "db_path": "../data/eos.db"
 }

@@ -1,132 +1,42 @@
-# EOS - Eye of Sauron 🔴
+# EOS Trade Vision
 
-Sistema de trading algorítmico com **Order Flow Analysis** + **Machine Learning** para criptomoedas e Forex.
+Sistema de trading algorítmico com Order Flow Analysis (OFA) + ML para cripto, com execução e monitoramento em AWS.
 
----
+## Módulos ativos
 
-### 🚀 Atalhos Rápidos
-- 🛡️ **Infraestrutura AWS (IPs, Deploy, SSH):** [docs/INFRASTRUCTURE.md](./docs/INFRASTRUCTURE.md)
-- ⚙️ **Regras do Projeto em IA:** [.agent/rules.md](./.agent/rules.md)
-- 📝 **Guia de Comparação Local vs GitHub:** [walkthrough.md](file:///C:/Users/sairo/.gemini/antigravity/brain/f456636b-70d3-480c-acd0-86d83a7c58fe/walkthrough.md)
+- `eos-telegram-bot/`: motor principal de sinais, validação, ML e integração Telegram.
+- `eos-gateway/`: API de apoio para dashboard e integração operacional.
+- `src/` + `public/` (raiz): frontend estático principal usado pelo `docker-compose` via `./dist`.
+- `docs/`: documentação operacional/infra.
 
----
+## Módulos legados
 
-## 🎯 Overview
+Tudo que era histórico e não participa do runtime atual foi movido para:
 
-| Bot | Mercado | Estratégia | Status |
-|-----|---------|------------|--------|
-| **EoS CRYPTO** 🔮 | Binance Futures | OFA Real + Ensemble ML | ✅ v3.0 |
-| **EoS IQ** 🎯 | Forex (IQ Option) | Volume Profile + Kaabar ML | ✅ v2.0 |
+- `obsolete/legacy_modules/`
+- `obsolete/research_artifacts/`
+- `obsolete/study_material/`
+- `obsolete/legacy_archives/`
 
----
+Inclui também o frontend duplicado legado (`eos-website`) e documentação de migração antiga.
 
-## 📊 Diferença Fundamental
+## Deploy (produção)
 
-### Por que estratégias diferentes?
+O deploy automático está em:
 
-| Aspecto | Crypto (Binance) | Forex |
-|---------|------------------|-------|
-| **Mercado** | Centralizado | Descentralizado (OTC) |
-| **Order Book** | ✅ Público | ❌ Privado |
-| **Volume** | ✅ Real (USD) | ⚠️ Tick Volume |
-| **Smart Money** | ✅ Visível | ❌ Invisível |
-| **Level 2** | ✅ Disponível | ❌ Não disponível |
+- `.github/workflows/deploy.yml`
 
-> *"O Forex não é uma bolsa. É um mercado OTC onde cada broker tem seu próprio order book."* — **Trader Dale**
+Ele atualiza o repositório no EC2 e reinicia o processo PM2 `eos-bot`.
 
----
+## Documentação recomendada
 
-## 🔮 EoS CRYPTO
+- Infra AWS: [docs/INFRASTRUCTURE.md](./docs/INFRASTRUCTURE.md)
+- Bot principal (visão geral): [eos-telegram-bot/README.md](./eos-telegram-bot/README.md)
+- Documento técnico (TCC, fórmulas e thresholds): [eos-telegram-bot/docs/ALGORITHM_TCC.md](./eos-telegram-bot/docs/ALGORITHM_TCC.md)
+- Legado movido para 5S: [obsolete/README.md](./obsolete/README.md)
 
-**Filosofia:** OFA Real → Order Flow institucional é visível na Binance.
+## Observações importantes
 
-### Módulos OFA
-- Smart Money Filter (trades $500-$100k+)
-- Stacked Imbalances (300%+ ratio)
-- Absorption Detection
-- Volume Profile (VPOC, VA)
-
-### Machine Learning v3.0
-- **Ensemble:** XGBoost + LightGBM + Random Forest + GB
-- **GMM:** Regime Detection (Ruiz & Chan)
-- **Threshold:** 70% para maior precisão
-
-📖 [Documentação completa →](./eos-telegram-bot/README.md)
-
----
-
-## 🎯 EoS IQ
-
-**Filosofia:** Volume Profile Proxy → Sem acesso a Order Book, usamos proxies inteligentes.
-
-### Métodos Implementados
-
-| Método | Autor | O que faz |
-|--------|-------|-----------|
-| **Volume Profile** | Trader Dale | VPOC, VA, HVN/LVN com Tick Volume |
-| **ML Inference** | Kaabar | Features proxy (absorption, tick velocity) |
-| **Regime Detection** | Ruiz & Chan | GMM para classificar mercado |
-
-### Machine Learning v2.0
-- **XGBoost** com features proxy
-- **GMM** para regime detection
-- **Precision:** 54.9% com threshold 60%
-
-📖 [Documentação completa →](./eos-iq-bot/README.md)
-
----
-
-## 🏗️ Arquitetura
-
-```
-AWS EC2 (54.232.17.9)
-│
-├── eos-bot (PM2)           # EoS CRYPTO
-│   ├── src/ofa/            # OFA Real
-│   ├── src/mlFilter.ts     # Ensemble ML
-│   └── data/eos.db         # SQLite
-│
-├── eos-iq-bot (PM2)        # EoS IQ
-│   ├── src/ofa/            # OFA Proxy
-│   ├── ml/                 # Kaabar Features
-│   └── data/eos-iq.db      # SQLite
-│
-└── eos-ml/                 # Training Pipeline
-    ├── src/                # Scripts Python
-    └── models/             # Modelos PKL
-```
-
----
-
-## 📚 Referências Técnicas
-
-| Autor | Contribuição |
-|-------|--------------|
-| **Michael Valtos** | Order Flow Philosophy |
-| **Trader Dale** | Volume Profile com Tick Volume |
-| **Rubén Villahermosa** | Cross-Market Analysis |
-| **Sofien Kaabar** | ML Inference, Fractional Diff |
-| **López de Prado** | Triple Barrier, Meta-Labeling |
-| **Ruiz & Chan** | GMM Regime Detection |
-
----
-
-## 📱 Telegram
-
-| Bot | Username |
-|-----|----------|
-| EoS CRYPTO | @EoS_Evilbot |
-| EoS IQ | @EoS_iqBot |
-
----
-
-## 🔗 URLs
-
-- **Site:** https://eos.s-iron.tech
-- **EC2:** 54.232.17.9
-
----
-
-*"One Ring to rule them all"* - Powered by s-iron.tech
-
-*Última atualização: 31/12/2024*
+- IQ Option não faz parte da stack ativa.
+- A segmentação de contagem de performance (wins/losses) agora é por fase no backend via `STATS_PHASE_TAG`.
+- Fase padrão atual: `fase jim compound v1`.

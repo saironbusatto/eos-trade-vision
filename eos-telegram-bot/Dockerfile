@@ -1,16 +1,21 @@
-FROM node:20-alpine
+FROM node:20-slim
 
 WORKDIR /app
 
-# Dependências básicas
-RUN apk add --no-cache ca-certificates
-
-# ML Dependencies skipped (Server Disk Full - Upgrade Required)
-# RUN pip install ...
+# System dependencies (Node + Python runtime for ML inference)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    python3 \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copiar package.json e instalar dependências
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
+
+# Install Python ML dependencies
+COPY ml/requirements.txt ./ml/requirements.txt
+RUN pip3 install --break-system-packages --no-cache-dir -r ./ml/requirements.txt
 
 # Copiar código compilado
 COPY dist/ ./dist/

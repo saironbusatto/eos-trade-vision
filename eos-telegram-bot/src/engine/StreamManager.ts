@@ -20,7 +20,7 @@ export class StreamManager extends EventEmitter {
     private watchdogTimer: NodeJS.Timeout | null = null;
     private lastMessageTime = 0;
 
-    private readonly BASE_URL = 'wss://stream.binance.com:9443/ws';
+    private readonly BASE_URL = 'wss://stream.binance.com:9443/stream';
     private readonly WATCHDOG_INTERVAL_MS = 30000; // 30s sem mensagem = problema
 
     constructor() {
@@ -32,7 +32,7 @@ export class StreamManager extends EventEmitter {
      * @param streams Array de streams (ex: ['btcusdt@aggTrade', 'ethusdt@aggTrade'])
      */
     public connect(streams: string[]): void {
-        this.streams = streams.map(s => s.toLowerCase());
+        this.streams = [...streams];
         this.shouldReconnect = true;
         this.reconnectAttempts = 0;
         this.doConnect();
@@ -45,7 +45,7 @@ export class StreamManager extends EventEmitter {
         }
 
         const url = this.streams.length > 0
-            ? `${this.BASE_URL}/${this.streams.join('/')}`
+            ? `${this.BASE_URL}?streams=${this.streams.join('/')}`
             : this.BASE_URL;
 
         console.log(`[StreamManager] Connecting to ${url}`);
@@ -76,15 +76,18 @@ export class StreamManager extends EventEmitter {
         this.lastMessageTime = Date.now();
 
         try {
-            const msg = JSON.parse(data.toString());
+            const payload = JSON.parse(data.toString());
 
             // Ignorar respostas de subscription
-            if (msg.result !== undefined && msg.id !== undefined) {
+            if (payload.result !== undefined && payload.id !== undefined) {
                 return;
             }
 
+            // Combined stream payload: { stream, data }
+            const msg = payload?.data ?? payload;
+
             // Processar aggTrade
-            if (msg.e === 'aggTrade') {
+            if (msg?.e === 'aggTrade') {
                 this.emit('message', msg as BinanceAggTrade);
             }
         } catch (e) {
@@ -177,7 +180,7 @@ export class StreamManager extends EventEmitter {
      * Adiciona novos streams à conexão existente
      */
     public subscribe(streams: string[]): void {
-        const newStreams = streams.map(s => s.toLowerCase());
+        const newStreams = [...streams];
         this.streams.push(...newStreams);
 
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -194,7 +197,7 @@ export class StreamManager extends EventEmitter {
      * Remove streams da conexão
      */
     public unsubscribe(streams: string[]): void {
-        const toRemove = streams.map(s => s.toLowerCase());
+        const toRemove = [...streams];
         this.streams = this.streams.filter(s => !toRemove.includes(s));
 
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {

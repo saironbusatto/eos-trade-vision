@@ -30,6 +30,9 @@ const ASSETS_REGEX = /\b(bitcoin|btc|ethereum|eth|solana|sol|bnb|xrp|usdt|usdc)\
 const NUMERIC_CONTEXT_REGEX = /\b(\$?\d+(\.\d+)?\s?(m|bn|b|million|billion|k))\b|\b(5m|15m|30m|1h|4h|24h)\b/i;
 const MARKET_TERMS_REGEX = /liquidation|funding rate|open interest|margin requirements|circuit breaker|market outage/i;
 
+// Stage 1 keyword gate (fast reject for clearly non-crypto news)
+const CRYPTO_KEYWORDS = /crypto|cryptocurrency|bitcoin|btc|ethereum|eth|solana|sol|xrp|bnb|doge|ada|avax|link|dot|altcoin|stablecoin|usdt|usdc|binance|coinbase|kraken|okx|bybit|exchange|blockchain|token|defi|on-chain|spot etf|etf/i;
+
 export class SentimentAnalyzer {
     private openai: OpenAI | null = null;
     private isRunning: boolean = false;

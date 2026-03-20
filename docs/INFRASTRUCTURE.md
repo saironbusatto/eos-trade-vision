@@ -1,113 +1,112 @@
-# Infraestrutura EOS - AWS EC2
+# Infraestrutura EOS (AWS)
 
-## Servidor
+Guia operacional da stack ativa em produção.
 
-- **IP:** 54.232.17.9
-- **Tipo:** t2.micro (1 CPU, 1GB RAM)
-- **OS:** Amazon Linux 2023
-- **Região:** sa-east-1 (São Paulo)
+## 1) Ambiente ativo
 
-## Portas Abertas
+- Região: `sa-east-1` (São Paulo)
+- EC2: `54.232.17.9`
+- Runtime principal: `eos-telegram-bot` (Node.js + TypeScript + SQLite + ML Python)
+- API agregadora: `eos-gateway`
+- Frontend: build estático servido por Nginx
 
-| Porta | Uso |
-|-------|-----|
-| 22 | SSH |
-| 80 | HTTP (redirect HTTPS) |
-| 443 | HTTPS |
-| 3000 | API Backend |
+Importante:
+- `IQ Option` está fora da stack ativa.
+- Tudo legado foi movido para `obsolete/`.
 
-## Processos PM2
+## 2) Processo de deploy
 
-| ID | Nome | Diretório | Descrição |
-|----|------|-----------|-----------|
-| 1 | eos-bot | /home/ec2-user/eos-bot | EoS CRYPTO Bot |
-| 2 | eos-iq | /home/ec2-user/eos-iq-bot | EoS IQ Bot |
+Deploy é acionado por push na `main` via:
 
-## Estrutura de Arquivos
+- `.github/workflows/deploy.yml`
 
-```
-/home/ec2-user/
-├── eos-bot/                    # EoS CRYPTO Bot
-│   ├── dist/                   # Código compilado
-│   ├── data/
-│   │   └── eos.db              # SQLite database
-│   ├── node_modules/
-│   ├── package.json
-│   └── .env
-│
-└── eos-iq-bot/                 # EoS IQ Bot
-    ├── dist/
-    ├── data/
-    │   └── eos-iq.db           # SQLite database
-    ├── node_modules/
-    ├── package.json
-    └── .env
+Fluxo do hook:
+1. faz `git pull` no servidor;
+2. instala dependências do bot (`npm ci --omit=dev`);
+3. sobe/reinicia PM2 `eos-bot`;
+4. executa `scripts/deploy_post_cleanup.sh` se existir.
 
-/var/www/eos/                   # Frontend
-├── index.html
-└── assets/
-```
+## 3) Diretórios de produção (padrão atual)
 
-## Databases
+O workflow suporta dois layouts por compatibilidade:
 
-| Bot | Arquivo | Conteúdo |
-|-----|---------|----------|
-| EoS CRYPTO | eos.db | signals, ml_training, price_checkpoints |
-| EoS IQ | eos-iq.db | signals |
+- Novo: `/home/ec2-user/eos-telegram-bot/eos-telegram-bot`
+- Legado: `/home/ec2-user/eos-bot`
 
-## Comandos Úteis
+Em ambos os casos, o bot deve estar com:
+- código compilado em `dist/`
+- banco em `data/eos.db`
+- configuração em `.env`
+
+## 4) Serviços e portas
+
+- `80/tcp`: frontend/API via Nginx
+- `22/tcp`: SSH
+- PM2:
+  - `eos-bot`: processo principal do bot
+
+## 5) Banco e retenção
+
+Banco principal:
+- `eos-telegram-bot/data/eos.db`
+
+Política operacional:
+- histórico bruto permanece no SQLite;
+- leitura de performance por fase é segmentada por `STATS_PHASE_TAG` (backend);
+- baseline por fase em `app_settings` como `stats_baseline_at:<tag>`.
+
+Fase padrão atual:
+- `fase jim compound v1`
+
+## 6) Variáveis críticas
+
+Obrigatórias:
+- `TELEGRAM_ENABLED=true`
+- `TELEGRAM_BOT_TOKEN=...`
+- `TELEGRAM_CHANNEL_ID=...`
+- `API_SECRET=...`
+
+Controle de fase:
+- `STATS_PHASE_TAG="fase jim compound v1"`
+
+Resiliência do engine:
+- `ENGINE_TARGET_COVERAGE_SEC=3300`
+- `ENGINE_MAX_LAG_MS=8000`
+- `ENGINE_RECOVERY_LAG_MS=3000`
+
+## 7) Checklist pós-deploy (AWS)
+
+Executar no servidor:
 
 ```bash
-# Conectar
+pm2 status
+pm2 logs eos-bot --lines 80 --nostream
+curl -s http://localhost:3000/health
+curl -s http://localhost:3000/api/stats
+node -e "const Database=require('better-sqlite3'); const db=new Database('/home/ec2-user/eos-telegram-bot/data/eos.db'); console.log(db.prepare(\"SELECT key,value FROM app_settings WHERE key LIKE ? ORDER BY key\").all('stats_baseline_at:%'));"
+```
+
+O que validar:
+1. `eos-bot` em `online`.
+2. `/health` com `telegram.ok=true`.
+3. `/api/stats` retornando counters da fase atual.
+4. baseline da fase presente em `app_settings`.
+
+## 8) Operação manual útil
+
+```bash
+# SSH
 ssh -i sirontech_key.pem ec2-user@54.232.17.9
 
-# Status dos bots
-pm2 status
+# Restart com env atualizado
+pm2 restart eos-bot --update-env
 
-# Logs em tempo real
-pm2 logs eos-bot --lines 50
-pm2 logs eos-iq --lines 50
-
-# Reiniciar bots
-pm2 restart eos-bot eos-iq
-
-# Ver erros
-cat /home/ec2-user/.pm2/logs/eos-bot-error.log
-
-# Backup database
-scp -i sirontech_key.pem ec2-user@54.232.17.9:/home/ec2-user/eos-bot/data/eos.db ./backup/
+# Health rápido
+curl -s http://localhost:3000/health
 ```
 
-## Deploy
+## 9) Observabilidade mínima recomendada
 
-```bash
-# EoS CRYPTO
-cd eos-telegram-bot && npm run build
-scp -i sirontech_key.pem -r dist/* ec2-user@54.232.17.9:/home/ec2-user/eos-bot/dist/
-ssh -i sirontech_key.pem ec2-user@54.232.17.9 "pm2 restart eos-bot"
-
-# EoS IQ
-cd eos-iq-bot && npm run build
-scp -i sirontech_key.pem -r dist/* ec2-user@54.232.17.9:/home/ec2-user/eos-iq-bot/dist/
-ssh -i sirontech_key.pem ec2-user@54.232.17.9 "pm2 restart eos-iq"
-```
-
-## SSL/HTTPS
-
-- **Provedor:** Let's Encrypt
-- **Renovação:** Automática via Certbot
-
-```bash
-sudo certbot certificates
-sudo certbot renew
-```
-
-## DNS
-
-- **Domínio:** eos.s-iron.tech
-- **Tipo:** A Record
-- **Valor:** 54.232.17.9
-
----
-
-*Última atualização: 31/12/2024*
+- acompanhar log de erro PM2 diariamente;
+- manter backup periódico de `data/eos.db`;
+- revisar taxa de `DEGRADED` do engine após mudanças de infra ou rede.

@@ -7,6 +7,7 @@ dotenv.config();
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const PAPER_TRADING_ENABLED = true;
+const TELEGRAM_ENABLED = process.env.TELEGRAM_ENABLED !== 'false';
 
 // Serviço
 const paperService = new PaperTradingService();
@@ -15,16 +16,32 @@ const autoTrader = new AutoTrader();
 export class TelegramListener {
     private bot: TelegramBot | null = null;
     private autoTraderStarted = false;
+    private disabledReason: string | null = null;
 
     constructor() {
+        if (!TELEGRAM_ENABLED) {
+            this.disabledReason = 'TELEGRAM_ENABLED=false';
+            console.warn('[TelegramListener] Telegram listener desabilitado por configuração.');
+            return;
+        }
+
         if (!TOKEN) {
-            console.error('[TelegramListener] Token não encontrado!');
+            this.disabledReason = 'TELEGRAM_BOT_TOKEN not configured';
+            console.warn('[TelegramListener] TELEGRAM_BOT_TOKEN não configurado. Listener em modo degradado.');
             return;
         }
 
         // Polling mode para receber mensagens
         this.bot = new TelegramBot(TOKEN, { polling: true });
         this.registerCommands();
+
+        // Resume AutoTrader automatically if there are enabled users persisted in DB
+        if (autoTrader.getEnabledUsersCount() > 0) {
+            autoTrader.start();
+            this.autoTraderStarted = true;
+            console.log('[TelegramListener] AutoTrader resumed from persisted settings.');
+        }
+
         console.log('[TelegramListener] Bot iniciado em modo Polling. 🚀');
     }
 
@@ -147,26 +164,60 @@ export class TelegramListener {
         this.bot.onText(/\/autotrader (on|off)/i, (msg, match) => {
             if (!match) return;
             const action = match[1].toLowerCase();
+            const userId = msg.from?.id.toString();
+            const username = msg.from?.username || msg.from?.first_name || 'Trader';
+            if (!userId) return;
 
             if (action === 'on') {
+                const account = sqliteDatabase.getAccount(userId);
+                if (!account) {
+                    this.bot?.sendMessage(
+                        msg.chat.id,
+                        "⚠️ Crie sua conta primeiro com `/iniciar [valor]` para definir a banca do AutoTrader.",
+                        { parse_mode: 'Markdown' }
+                    );
+                    return;
+                }
+
+                autoTrader.enableForUser(userId, username);
+
                 if (!this.autoTraderStarted) {
                     autoTrader.start();
                     this.autoTraderStarted = true;
-                    this.bot?.sendMessage(msg.chat.id, "🤖 **AutoTrader Iniciado!**\nMonitorando mercado a cada 60s...", { parse_mode: 'Markdown' });
-                } else {
-                    this.bot?.sendMessage(msg.chat.id, "🤖 AutoTrader já está rodando.", { parse_mode: 'Markdown' });
                 }
+
+                this.bot?.sendMessage(
+                    msg.chat.id,
+                    `🤖 *AutoTrader ativado para você!*\n\n💰 Banca ativa: $${Number(account.balance).toFixed(2)}\n📡 O bot vai operar automaticamente na sua conta quando houver sinal válido.`,
+                    { parse_mode: 'Markdown' }
+                );
             } else {
-                autoTrader.stop();
-                this.autoTraderStarted = false;
-                this.bot?.sendMessage(msg.chat.id, "🛑 **AutoTrader Parado.**", { parse_mode: 'Markdown' });
+                autoTrader.disableForUser(userId, username);
+
+                if (autoTrader.getEnabledUsersCount() === 0) {
+                    autoTrader.stop();
+                    this.autoTraderStarted = false;
+                }
+
+                this.bot?.sendMessage(msg.chat.id, "🛑 *AutoTrader desativado para sua conta.*", { parse_mode: 'Markdown' });
             }
         });
 
         // /status
         this.bot.onText(/\/status/, (msg) => {
-            const status = this.autoTraderStarted ? "🟢 ONLINE" : "🔴 OFFLINE";
-            this.bot?.sendMessage(msg.chat.id, `🤖 **Status do AutoTrader:** ${status}`, { parse_mode: 'Markdown' });
+            const userId = msg.from?.id.toString();
+            if (!userId) return;
+
+            const globalStatus = this.autoTraderStarted ? "🟢 ONLINE" : "🔴 OFFLINE";
+            const userStatus = autoTrader.isEnabledForUser(userId) ? "🟢 ATIVO" : "⚪️ INATIVO";
+            const account = sqliteDatabase.getAccount(userId);
+            const budget = account ? `$${Number(account.balance).toFixed(2)}` : "não definida";
+
+            this.bot?.sendMessage(
+                msg.chat.id,
+                `🤖 *Status do AutoTrader*\n\nGlobal: ${globalStatus}\nSua conta: ${userStatus}\nBanca: ${budget}`,
+                { parse_mode: 'Markdown' }
+            );
         });
 
         // /news
@@ -257,7 +308,12 @@ export class TelegramListener {
     }
 
     public async testConnection(): Promise<{ ok: boolean; botName?: string; error?: string }> {
-        if (!this.bot) return { ok: false, error: 'Bot not initialized' };
+        if (!this.bot) {
+            if (this.disabledReason) {
+                return { ok: true, botName: 'disabled', error: this.disabledReason };
+            }
+            return { ok: false, error: 'Bot not initialized' };
+        }
         try {
             const me = await this.bot.getMe();
             return { ok: true, botName: me.username };

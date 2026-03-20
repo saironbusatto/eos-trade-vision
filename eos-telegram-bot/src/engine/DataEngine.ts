@@ -12,6 +12,8 @@ interface SymbolContext {
     firstWsId: number | null;
     firstWsTime: number | null;
     warmupPromise: Promise<void> | null;
+    lagBreachCount: number;
+    healthyCount: number;
 }
 
 export interface DataEngineEvents {
@@ -65,7 +67,9 @@ export class DataEngine extends EventEmitter {
                 incomingQueue: [],
                 firstWsId: null,
                 firstWsTime: null,
-                warmupPromise: null
+                warmupPromise: null,
+                lagBreachCount: 0,
+                healthyCount: 0
             });
         }
 
@@ -221,6 +225,8 @@ export class DataEngine extends EventEmitter {
             ctx.firstWsId = null;
             ctx.firstWsTime = null;
             ctx.incomingQueue = [pendingMsg];
+            ctx.lagBreachCount = 0;
+            ctx.healthyCount = 0;
             this.transition(symbol, 'WARMING');
             // Proximo evento WS vai disparar novo warmup
             return;
@@ -259,13 +265,30 @@ export class DataEngine extends EventEmitter {
                 const stats = ctx.buffer.getStats();
 
                 // Verificar lag
-                if (stats.lagMs > ENGINE_CONFIG.MAX_LAG_MS && ctx.state === 'LIVE_OK') {
-                    console.warn(`[DataEngine] High lag for ${symbol}: ${stats.lagMs}ms`);
-                    this.transition(symbol, 'DEGRADED');
+                if (stats.lagMs > ENGINE_CONFIG.MAX_LAG_MS) {
+                    ctx.lagBreachCount += 1;
+                    ctx.healthyCount = 0;
+
+                    if (ctx.state === 'LIVE_OK' && ctx.lagBreachCount >= ENGINE_CONFIG.LAG_BREACHES_TO_DEGRADE) {
+                        console.warn(
+                            `[DataEngine] High lag for ${symbol}: ${stats.lagMs}ms (${ctx.lagBreachCount} consecutive checks)`
+                        );
+                        this.transition(symbol, 'DEGRADED');
+                    }
+                    continue;
                 }
 
-                // Recuperar de DEGRADED se lag normalizar
-                if (ctx.state === 'DEGRADED' && stats.lagMs < 500 && stats.coverageSec >= ENGINE_CONFIG.TARGET_COVERAGE_SEC) {
+                // Lag saudável no check atual
+                ctx.lagBreachCount = 0;
+                ctx.healthyCount += 1;
+
+                // Recuperar de DEGRADED se lag normalizar de forma estável
+                if (
+                    ctx.state === 'DEGRADED' &&
+                    stats.lagMs <= ENGINE_CONFIG.RECOVERY_LAG_MS &&
+                    stats.coverageSec >= ENGINE_CONFIG.TARGET_COVERAGE_SEC &&
+                    ctx.healthyCount >= ENGINE_CONFIG.HEALTHY_CHECKS_TO_RECOVER
+                ) {
                     this.transition(symbol, 'LIVE_OK');
                 }
             }
