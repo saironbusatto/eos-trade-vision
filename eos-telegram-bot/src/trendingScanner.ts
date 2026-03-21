@@ -51,6 +51,12 @@ const UNIFIED_SCORE_SENTIMENT_WINDOW_MIN = Math.max(30, envNumber('UNIFIED_SCORE
 const UNIFIED_SCORE_SENTIMENT_MIN_IMPACT = Math.max(1, envNumber('UNIFIED_SCORE_SENTIMENT_MIN_IMPACT', 4));
 const UNIFIED_SCORE_REQUIRE_ML_APPROVAL = envBool('UNIFIED_SCORE_REQUIRE_ML_APPROVAL', true);
 
+// ContextFilter — SM alignment + volume gate
+const ENABLE_CONTEXT_FILTER = envBool('ENABLE_CONTEXT_FILTER', true);
+const CONTEXT_FILTER_REQUIRE_SM_ALIGNED = envBool('CONTEXT_FILTER_REQUIRE_SM_ALIGNED', true);
+const CONTEXT_FILTER_MAX_SELL_VOLUME_RATIO = envNumber('CONTEXT_FILTER_MAX_SELL_VOLUME_RATIO', 1.5);
+const CONTEXT_FILTER_CONTEXT_SCORE_BONUS = envNumber('CONTEXT_FILTER_CONTEXT_SCORE_BONUS', 0.05);
+
 // Format price with dynamic decimals based on value
 function formatPrice(price: number): string {
     if (price >= 100) return `$${price.toFixed(2)}`;
@@ -503,6 +509,27 @@ export class TrendingScanner {
                     }
                 }
 
+                // [ContextFilter] SM Alignment + Volume Gate
+                if (ENABLE_CONTEXT_FILTER) {
+                    // Gate 1: Smart Money deve estar alinhado com a direção
+                    if (CONTEXT_FILTER_REQUIRE_SM_ALIGNED) {
+                        const smRequired = action === 'BUY' ? 1 : -1;
+                        if (signal.f_smart_money !== smRequired) {
+                            const smLabel = signal.f_smart_money === 0 ? 'NEUTRAL' : 'OPOSTO';
+                            console.log(`[ContextFilter] ${signal.symbol} ${action} REJEITADO - SM ${smLabel} (f_sm=${signal.f_smart_money}, requer ${action === 'BUY' ? 'BULLISH(1)' : 'BEARISH(-1)'})`);
+                            continue;
+                        }
+                    }
+
+                    // Gate 2: SELL com volume anormal é armadilha (WR histórico 42-44%)
+                    if (action === 'SELL' && signal.volumeRatio >= CONTEXT_FILTER_MAX_SELL_VOLUME_RATIO) {
+                        console.log(`[ContextFilter] ${signal.symbol} SELL REJEITADO - vol ${signal.volumeRatio.toFixed(2)}x >= ${CONTEXT_FILTER_MAX_SELL_VOLUME_RATIO}x (WR histórico 42-44%)`);
+                        continue;
+                    }
+
+                    console.log(`[ContextFilter] ${signal.symbol} ${action} APROVADO - SM:${signal.f_smart_money} VP:${signal.f_price_context} Vol:${signal.volumeRatio.toFixed(2)}x`);
+                }
+
                 // [NEW] ML Service V2: Python Inference
                 const now = new Date();
 
@@ -548,7 +575,18 @@ export class TrendingScanner {
                 const edge = edgeMap.get(`${hourUtc}:${action}`);
                 const unified = this.getUnifiedDecisionScore(signal, action, mlResult, edge, sentimentSignals);
 
-                signal.decisionScore = unified.score;
+                // Context bonus: SM alinhado + hora com CI95_low >= 50% ("golden hour")
+                let contextBonus = 0;
+                if (ENABLE_CONTEXT_FILTER && CONTEXT_FILTER_CONTEXT_SCORE_BONUS > 0) {
+                    const smAligned = (action === 'BUY' && signal.f_smart_money === 1) ||
+                                      (action === 'SELL' && signal.f_smart_money === -1);
+                    const goldenHour = edge !== undefined && edge.win_rate_ci95_low >= 50;
+                    if (smAligned && goldenHour) {
+                        contextBonus = CONTEXT_FILTER_CONTEXT_SCORE_BONUS;
+                        console.log(`[ContextFilter] ${signal.symbol} +${(contextBonus * 100).toFixed(0)}% bonus (SM alinhado + golden hour CI95=${edge!.win_rate_ci95_low.toFixed(1)}%)`);
+                    }
+                }
+                signal.decisionScore = clamp(unified.score + contextBonus, 0, 1);
                 signal.decisionBreakdown = unified.components;
 
                 console.log(
