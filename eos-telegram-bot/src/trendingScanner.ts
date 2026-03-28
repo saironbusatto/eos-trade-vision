@@ -5,6 +5,7 @@ import { calculatePosition, getFundingRate } from "./leverageCalculator";
 import { getMacroAnalysis, getMacroForDB } from "./macroAnalyzer";
 import { getDataService } from "./engine";
 import { mlService } from "./mlService";
+import { collectExitFeatures, fetchCounterfactualPrices, USE_ML_EXIT } from "./exitDecisionEngine";
 
 // Default bankroll for calculations (user can override)
 const DEFAULT_BANKROLL = 1000; // $1000
@@ -798,6 +799,10 @@ export class TrendingScanner {
 
     // VALIDATION: Check pending signals and send WIN/LOSS with 45min timeout
     private async validatePendingSignals(): Promise<void> {
+        // ── 0. Preencher contrafactuais pendentes ─────────────────────────────
+        // (não-blocking: roda em background, erros são silenciosos)
+        this.fillPendingCounterfactuals().catch(() => undefined);
+
         const pending = sqliteDatabase.getPendingSignals();
         if (pending.length === 0) return;
 
@@ -822,10 +827,30 @@ export class TrendingScanner {
                 const age = Date.now() - new Date(signal.created_at).getTime();
                 const ageMinutes = Math.floor(age / (60 * 1000));
 
+                // ── Exit Decision Engine: coleta features (Fase 1 — apenas observação) ──
+                // USE_ML_EXIT=false → não altera a decisão, só registra para treinamento futuro
+                if (!USE_ML_EXIT) {
+                    collectExitFeatures(signal, currentPrice).then(features => {
+                        if (!features) return;
+                        sqliteDatabase.logExitDecision({
+                            ...features,
+                            decision_source: 'HARD_STOP',
+                            decision:        'HOLD',
+                            confidence:      1.0,
+                            is_final:        false,
+                            captured_at:     features.captured_at
+                        });
+                    }).catch(() => undefined);
+                }
+
                 // 1. Verificar se bateu stop ou target
                 const validation = sqliteDatabase.validateSignal(signal.id, currentPrice);
 
                 if (validation && validation.result !== 'PENDING') {
+                    // ── Exit log: marca fechamento real ────────────────────────
+                    const closeTimeMs = Date.now();
+                    sqliteDatabase.finalizeExitLog(signal.id, validation.result, validation.profitPercent, closeTimeMs);
+
                     // Bateu stop ou target - envia WIN/LOSS
                     await this.sendValidationResult(signal, validation.result, currentPrice, validation.profitPercent);
                     continue;
@@ -842,6 +867,10 @@ export class TrendingScanner {
                     // Fetch macro data for ML training
                     const macroAnalysis = await getMacroAnalysis();
                     const macroData = getMacroForDB(macroAnalysis);
+
+                    // ── Exit log: marca fechamento por timeout ─────────────────
+                    const closeTimeMs = Date.now();
+                    sqliteDatabase.finalizeExitLog(signal.id, result as 'WIN' | 'LOSS', profit_percent, closeTimeMs);
 
                     // Force close - atualiza no banco com macro data
                     sqliteDatabase.forceCloseSignal(signal.id, currentPrice, result as 'WIN' | 'LOSS', profit_percent, macroData);
@@ -880,6 +909,30 @@ export class TrendingScanner {
         // Enviar status updates consolidados (uma única mensagem)
         if (statusUpdates.length > 0) {
             await this.sendConsolidatedStatusUpdate(statusUpdates);
+        }
+    }
+
+    /** Preenche contrafactuais de saídas antigas que já têm 16+ min. */
+    private async fillPendingCounterfactuals(): Promise<void> {
+        const pending = sqliteDatabase.getPendingCounterfactuals();
+        for (const row of pending) {
+            try {
+                const signal = sqliteDatabase.getSignal(row.signal_id);
+                if (!signal) continue;
+
+                const cf = await fetchCounterfactualPrices(
+                    row.symbol,
+                    signal.action,
+                    signal.entry_price,
+                    row.close_time_ms
+                );
+                if (!cf) continue;
+
+                sqliteDatabase.fillCounterfactual(row.id, cf.cf_pnl_5m, cf.cf_pnl_10m, cf.cf_pnl_15m);
+                console.log(`[ExitDecisionEngine] Counterfactual filled for log#${row.id} (signal#${row.signal_id}): 5m=${cf.cf_pnl_5m.toFixed(2)}% 10m=${cf.cf_pnl_10m.toFixed(2)}% 15m=${cf.cf_pnl_15m.toFixed(2)}%`);
+            } catch {
+                /* silencioso — será tentado novamente no próximo ciclo */
+            }
         }
     }
 

@@ -317,6 +317,72 @@ function initSchema(): void {
         )
     `).run();
 
+    // ── Exit Decision Engine ──────────────────────────────────────────────────
+    // Uma linha por ciclo de monitoramento por sinal.
+    // Fase 1: decision_source='HARD_STOP', decision='HOLD' até o fechamento.
+    // is_final=1 na linha de fechamento real.
+    // Counterfactual preenchido ~15 min após o fechamento.
+    db.prepare(`
+        CREATE TABLE IF NOT EXISTS exit_decisions_log (
+            id                         INTEGER PRIMARY KEY AUTOINCREMENT,
+            signal_id                  INTEGER NOT NULL,
+            symbol                     TEXT    NOT NULL,
+            action                     TEXT    NOT NULL,
+
+            -- Features no momento da captura
+            pnl_pct                    REAL,
+            time_in_trade_seconds      INTEGER,
+            distance_to_stop_pct       REAL,
+            distance_to_target_pct     REAL,
+            volume_ratio               REAL,
+            volatility_5m              REAL,
+            volatility_15m             REAL,
+            volatility_ratio           REAL,
+            rsi_current                REAL,
+            rsi_slope                  REAL,
+            candles_in_favor           INTEGER,
+            candles_against            INTEGER,
+            original_signal_score      INTEGER,
+            bid_ask_spread_pct         REAL,
+
+            -- Decisão
+            decision_source            TEXT    NOT NULL DEFAULT 'HARD_STOP',
+            decision                   TEXT    NOT NULL DEFAULT 'HOLD',
+            confidence                 REAL             DEFAULT 1.0,
+            reasoning                  TEXT,
+
+            -- Outcome (preenchido no fechamento)
+            is_final                   INTEGER          DEFAULT 0,
+            outcome                    TEXT,
+            pnl_final                  REAL,
+
+            -- Counterfactual (preenchido ~15 min após fechamento)
+            cf_pnl_5m                  REAL,
+            cf_pnl_10m                 REAL,
+            cf_pnl_15m                 REAL,
+            close_time_ms              INTEGER,
+            counterfactual_needed_at   INTEGER,
+            counterfactual_filled      INTEGER          DEFAULT 0,
+
+            -- Meta
+            captured_at                INTEGER NOT NULL,
+            created_at                 DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+            FOREIGN KEY (signal_id) REFERENCES signals(id)
+        )
+    `).run();
+
+    db.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_exit_log_signal
+        ON exit_decisions_log(signal_id)
+    `).run();
+
+    db.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_exit_log_cf
+        ON exit_decisions_log(counterfactual_filled, counterfactual_needed_at)
+        WHERE is_final = 1
+    `).run();
+
     console.log('[SQLite] Schema initialized');
 
     // Backward-compatible schema migrations for legacy paper tables
@@ -1065,5 +1131,152 @@ export const sqliteDatabase = {
             VALUES (?, ?, ?, ?)
         `);
         stmt.run(signalId, userId, symbol, reason);
+    },
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // EXIT DECISION ENGINE — log de features e decisões de saída
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Registra uma observação de features no ciclo de monitoramento.
+     * Retorna o id da linha inserida.
+     */
+    logExitDecision(entry: {
+        signal_id:              number;
+        symbol:                 string;
+        action:                 'BUY' | 'SELL';
+        pnl_pct:                number;
+        time_in_trade_seconds:  number;
+        distance_to_stop_pct:   number;
+        distance_to_target_pct: number;
+        volume_ratio:           number;
+        volatility_5m:          number;
+        volatility_15m:         number;
+        volatility_ratio:       number;
+        rsi_current:            number;
+        rsi_slope:              number;
+        candles_in_favor:       number;
+        candles_against:        number;
+        original_signal_score:  number;
+        bid_ask_spread_pct:     number;
+        decision_source:        'HARD_STOP' | 'ML' | 'LLM' | 'FALLBACK';
+        decision:               'HOLD' | 'EXIT' | 'MOVE_STOP';
+        confidence:             number;
+        reasoning?:             string;
+        is_final:               boolean;
+        outcome?:               'WIN' | 'LOSS';
+        pnl_final?:             number;
+        close_time_ms?:         number;
+        captured_at:            number;
+    }): number {
+        const stmt = db.prepare(`
+            INSERT INTO exit_decisions_log (
+                signal_id, symbol, action,
+                pnl_pct, time_in_trade_seconds, distance_to_stop_pct, distance_to_target_pct,
+                volume_ratio, volatility_5m, volatility_15m, volatility_ratio,
+                rsi_current, rsi_slope, candles_in_favor, candles_against,
+                original_signal_score, bid_ask_spread_pct,
+                decision_source, decision, confidence, reasoning,
+                is_final, outcome, pnl_final,
+                close_time_ms, counterfactual_needed_at, counterfactual_filled,
+                captured_at
+            ) VALUES (
+                ?, ?, ?,
+                ?, ?, ?, ?,
+                ?, ?, ?, ?,
+                ?, ?, ?, ?,
+                ?, ?,
+                ?, ?, ?, ?,
+                ?, ?, ?,
+                ?, ?, 0,
+                ?
+            )
+        `);
+
+        // counterfactual_needed_at = closeTimeMs + 16 min (dá margem para o candle fechar)
+        const cfNeededAt = entry.is_final && entry.close_time_ms
+            ? entry.close_time_ms + 16 * 60 * 1000
+            : null;
+
+        const result = stmt.run(
+            entry.signal_id, entry.symbol, entry.action,
+            entry.pnl_pct, entry.time_in_trade_seconds,
+            entry.distance_to_stop_pct, entry.distance_to_target_pct,
+            entry.volume_ratio, entry.volatility_5m, entry.volatility_15m, entry.volatility_ratio,
+            entry.rsi_current, entry.rsi_slope, entry.candles_in_favor, entry.candles_against,
+            entry.original_signal_score, entry.bid_ask_spread_pct,
+            entry.decision_source, entry.decision, entry.confidence, entry.reasoning ?? null,
+            entry.is_final ? 1 : 0, entry.outcome ?? null, entry.pnl_final ?? null,
+            entry.close_time_ms ?? null, cfNeededAt,
+            entry.captured_at
+        );
+
+        return result.lastInsertRowid as number;
+    },
+
+    /**
+     * Atualiza o outcome de todas as linhas de um sinal quando ele fecha.
+     * Marca a última linha como is_final=1.
+     */
+    finalizeExitLog(signalId: number, outcome: 'WIN' | 'LOSS', pnlFinal: number, closeTimeMs: number): void {
+        // 1. Atualiza o outcome em todas as linhas do sinal
+        db.prepare(`
+            UPDATE exit_decisions_log
+            SET outcome = ?, pnl_final = ?
+            WHERE signal_id = ?
+        `).run(outcome, pnlFinal, signalId);
+
+        // 2. Marca a última linha como is_final e define quando buscar o contrafactual
+        const cfNeededAt = closeTimeMs + 16 * 60 * 1000;
+        db.prepare(`
+            UPDATE exit_decisions_log
+            SET is_final = 1,
+                decision = 'EXIT',
+                close_time_ms = ?,
+                counterfactual_needed_at = ?
+            WHERE signal_id = ?
+              AND id = (SELECT MAX(id) FROM exit_decisions_log WHERE signal_id = ?)
+        `).run(closeTimeMs, cfNeededAt, signalId, signalId);
+    },
+
+    /**
+     * Retorna linhas finais que ainda precisam do contrafactual preenchido.
+     */
+    getPendingCounterfactuals(): Array<{
+        id: number;
+        signal_id: number;
+        symbol: string;
+        action: string;
+        pnl_final: number;
+        close_time_ms: number;
+        counterfactual_needed_at: number;
+    }> {
+        return db.prepare(`
+            SELECT id, signal_id, symbol, action, pnl_final, close_time_ms, counterfactual_needed_at
+            FROM exit_decisions_log
+            WHERE is_final = 1
+              AND counterfactual_filled = 0
+              AND counterfactual_needed_at IS NOT NULL
+              AND counterfactual_needed_at <= ?
+        `).all(Date.now()) as any[];
+    },
+
+    /**
+     * Preenche os preços contrafactuais de uma linha final.
+     */
+    fillCounterfactual(id: number, cf5m: number, cf10m: number, cf15m: number): void {
+        db.prepare(`
+            UPDATE exit_decisions_log
+            SET cf_pnl_5m = ?, cf_pnl_10m = ?, cf_pnl_15m = ?, counterfactual_filled = 1
+            WHERE id = ?
+        `).run(cf5m, cf10m, cf15m, id);
+    },
+
+    /** Conta linhas coletadas na tabela (útil para saber quando há dados suficientes). */
+    getExitLogCount(): number {
+        const row = db.prepare(
+            "SELECT COUNT(*) as n FROM exit_decisions_log WHERE is_final = 1 AND outcome IS NOT NULL"
+        ).get() as { n: number };
+        return row?.n ?? 0;
     }
 };
