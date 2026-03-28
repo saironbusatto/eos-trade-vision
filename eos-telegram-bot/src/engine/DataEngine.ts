@@ -39,6 +39,19 @@ export class DataEngine extends EventEmitter {
         this.streamManager.on('message', this.handleStreamMessage.bind(this));
         this.streamManager.on('connected', () => {
             console.log('[DataEngine] Stream connected');
+            // Re-iniciar warmup para todos os símbolos que estavam OFFLINE
+            for (const [symbol, ctx] of this.contexts) {
+                if (ctx.state === 'OFFLINE') {
+                    ctx.buffer = new MarketDataBuffer(symbol);
+                    ctx.incomingQueue = [];
+                    ctx.firstWsId = null;
+                    ctx.firstWsTime = null;
+                    ctx.warmupPromise = null;
+                    ctx.lagBreachCount = 0;
+                    ctx.healthyCount = 0;
+                    this.transition(symbol, 'WARMING');
+                }
+            }
         });
         this.streamManager.on('disconnected', () => {
             console.log('[DataEngine] Stream disconnected');
