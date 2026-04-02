@@ -12,6 +12,7 @@
 
 import { spawn } from 'child_process';
 import * as path from 'path';
+import OpenAI from 'openai';
 import { Signal } from './sqliteDatabase';
 
 // ─── Feature flags (controlados pelo .env) ────────────────────────────────────
@@ -371,12 +372,110 @@ function runExitModelInference(features: ExitFeatures): Promise<MLExitRaw> {
     });
 }
 
+// ─── LLM exit decision (Fase 3) ───────────────────────────────────────────────
+
+const EXIT_LLM_MODEL_NAME = process.env.EXIT_LLM_MODEL ?? 'gpt-4o-mini';
+let _openaiClient: OpenAI | null = null;
+
+function getOpenAI(): OpenAI | null {
+    if (!process.env.OPENAI_API_KEY) return null;
+    if (!_openaiClient) _openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    return _openaiClient;
+}
+
+function buildLLMPrompt(signal: Signal, features: ExitFeatures, mlConf: number): string {
+    const side      = signal.action === 'BUY' ? 'LONG' : 'SHORT';
+    const pnlSign   = features.pnl_pct >= 0 ? '+' : '';
+    const ageMin    = Math.round(features.time_in_trade_seconds / 60);
+    const rsiDir    = features.rsi_slope > 0.5 ? 'subindo' : features.rsi_slope < -0.5 ? 'caindo' : 'lateral';
+    const volCtx    = features.volatility_ratio > 1.3 ? 'volatilidade AUMENTANDO (5m > 15m)'
+                    : features.volatility_ratio < 0.7 ? 'volatilidade CAINDO (5m < 15m)'
+                    : 'volatilidade estável';
+
+    return `Você é um trader quantitativo experiente. Analise esta operação aberta e decida: EXIT (fechar agora) ou HOLD (aguardar stop/target).
+
+OPERAÇÃO:
+- Símbolo: ${signal.symbol} | Direção: ${side}
+- Entrada: ${signal.entry_price.toFixed(4)} | Stop: ${signal.stop_loss.toFixed(4)} | Target: ${signal.take_profit.toFixed(4)}
+- PnL atual: ${pnlSign}${features.pnl_pct.toFixed(3)}%
+- Tempo na operação: ${ageMin} min
+- Score original do sinal: ${features.original_signal_score.toFixed(1)}%
+
+MERCADO ATUAL:
+- Distância ao stop: ${features.distance_to_stop_pct.toFixed(3)}%
+- Distância ao target: ${features.distance_to_target_pct.toFixed(3)}%
+- RSI: ${features.rsi_current.toFixed(1)} (${rsiDir}, slope ${features.rsi_slope.toFixed(2)})
+- Volume ratio: ${features.volume_ratio.toFixed(2)}x (acima de 1 = volume acima da média)
+- ${volCtx}
+- Bid-ask spread: ${features.bid_ask_spread_pct.toFixed(4)}%
+- Candles a favor: ${features.candles_in_favor} | Contra: ${features.candles_against}
+
+CONTEXTO DO MODELO ML:
+- O modelo ML estava INSEGURO nesta decisão (confiança: ${(mlConf * 100).toFixed(1)}% < 75%)
+- Isso significa que o padrão desta operação é ambíguo para o modelo estatístico
+
+Responda SOMENTE com JSON válido, sem markdown:
+{"decision": "EXIT" ou "HOLD", "confidence": 0.0 a 1.0, "reasoning": "1-2 frases objetivas"}
+
+Critérios: prefira EXIT se RSI divergindo contra a posição + spread alto + candles contra maioria. Prefira HOLD se ainda longe do stop e momentum a favor.`;
+}
+
+async function runLLMExitDecision(
+    signal: Signal,
+    features: ExitFeatures,
+    mlConf: number
+): Promise<ExitDecisionResult> {
+    const client = getOpenAI();
+    if (!client) {
+        return { decision: 'HOLD', source: 'FALLBACK', confidence: 0, reasoning: 'OPENAI_API_KEY não configurada' };
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), EXIT_LLM_TIMEOUT_MS);
+
+    try {
+        const response = await client.chat.completions.create({
+            model:       EXIT_LLM_MODEL_NAME,
+            messages:    [{ role: 'user', content: buildLLMPrompt(signal, features, mlConf) }],
+            temperature: 0.1,
+            max_tokens:  200,
+        }, { signal: controller.signal });
+
+        clearTimeout(timer);
+
+        const content = response.choices[0]?.message?.content?.trim() ?? '';
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error('JSON não encontrado na resposta LLM');
+
+        const parsed = JSON.parse(jsonMatch[0]) as {
+            decision: string;
+            confidence: number;
+            reasoning?: string;
+        };
+
+        const decision  = (['EXIT', 'HOLD', 'MOVE_STOP'].includes(parsed.decision) ? parsed.decision : 'HOLD') as ExitDecision;
+        const confidence = Math.min(1, Math.max(0, Number(parsed.confidence) || 0));
+
+        return { decision, source: 'LLM', confidence, reasoning: parsed.reasoning };
+
+    } catch (err: unknown) {
+        clearTimeout(timer);
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[ExitDecision] LLM error for signal ${signal.id}: ${msg}`);
+        return { decision: 'HOLD', source: 'FALLBACK', confidence: 0, reasoning: msg };
+    }
+}
+
 // ─── Decisão de saída (Fase 2 — ML ativo) ────────────────────────────────────
 
 /**
- * Árbitro de saída.
- * USE_ML_EXIT=true → chama ML; se confiança >= EXIT_ML_MIN_CONFIDENCE usa o resultado.
- * Caso contrário retorna HOLD (deixa o hard stop decidir).
+ * Árbitro de saída (Fases 2 + 3).
+ *
+ * Fluxo:
+ *   1. ML predict → confiança >= EXIT_ML_MIN_CONFIDENCE (75%)? age imediatamente
+ *   2. ML inseguro + trade >= EXIT_LLM_MIN_TRADE_AGE_MIN (10 min)?
+ *      → LLM analisa contexto → confiança >= EXIT_LLM_MIN_CONFIDENCE (70%)? age
+ *   3. Qualquer incerteza restante → HOLD (hard stop decide)
  */
 export async function makeExitDecision(
     signal: Signal,
@@ -386,31 +485,42 @@ export async function makeExitDecision(
         return { decision: 'HOLD', source: 'HARD_STOP', confidence: 1.0 };
     }
 
+    // ── Fase 2: ML ────────────────────────────────────────────────────────────
+    let mlConf = 0;
     try {
         const raw = await runExitModelInference(features);
 
-        if (raw.error || raw.source === 'FALLBACK') {
-            console.warn(`[ExitDecision] ML fallback for signal ${signal.id}: ${raw.reason ?? raw.error}`);
-            return { decision: 'HOLD', source: 'FALLBACK', confidence: 0 };
+        if (!raw.error && raw.source !== 'FALLBACK') {
+            const decision = (raw.decision ?? 'HOLD') as ExitDecision;
+            mlConf = raw.confidence ?? 0;
+
+            if (mlConf >= EXIT_ML_MIN_CONFIDENCE) {
+                console.log(`[ExitDecision] ${signal.symbol}#${signal.id} → ${decision} (ML ${(mlConf * 100).toFixed(1)}%)`);
+                return { decision, source: 'ML', confidence: mlConf, probabilities: raw.probabilities };
+            }
+
+            console.log(`[ExitDecision] ${signal.symbol}#${signal.id} ML inseguro (${(mlConf * 100).toFixed(1)}%) — escalando para LLM`);
         }
-
-        const decision  = (raw.decision ?? 'HOLD') as ExitDecision;
-        const conf      = raw.confidence ?? 0;
-
-        // Só age se confiança suficiente
-        if (conf >= EXIT_ML_MIN_CONFIDENCE) {
-            console.log(`[ExitDecision] Signal ${signal.id} → ${decision} (conf=${(conf * 100).toFixed(1)}%) [ML]`);
-            return { decision, source: 'ML', confidence: conf, probabilities: raw.probabilities };
-        }
-
-        // Confiança baixa → HOLD, aguarda hard stop
-        console.log(`[ExitDecision] Signal ${signal.id} → HOLD (ML conf=${(conf * 100).toFixed(1)}% < ${EXIT_ML_MIN_CONFIDENCE * 100}%) — low confidence`);
-        return { decision: 'HOLD', source: 'ML', confidence: conf, probabilities: raw.probabilities };
-
     } catch (err) {
-        console.error(`[ExitDecision] Erro na inferência ML para signal ${signal.id}:`, err);
-        return { decision: 'HOLD', source: 'FALLBACK', confidence: 0 };
+        console.error(`[ExitDecision] ML error signal ${signal.id}:`, err);
     }
+
+    // ── Fase 3: LLM (só se operação tem maturidade mínima) ───────────────────
+    const ageMin = features.time_in_trade_seconds / 60;
+    if (ageMin < EXIT_LLM_MIN_TRADE_AGE_MIN) {
+        console.log(`[ExitDecision] ${signal.symbol}#${signal.id} operação muito nova (${ageMin.toFixed(1)}min < ${EXIT_LLM_MIN_TRADE_AGE_MIN}min) — HOLD`);
+        return { decision: 'HOLD', source: 'ML', confidence: mlConf };
+    }
+
+    const llmResult = await runLLMExitDecision(signal, features, mlConf);
+
+    if (llmResult.source !== 'FALLBACK' && llmResult.confidence >= EXIT_LLM_MIN_CONFIDENCE) {
+        console.log(`[ExitDecision] ${signal.symbol}#${signal.id} → ${llmResult.decision} (LLM ${(llmResult.confidence * 100).toFixed(1)}%) — ${llmResult.reasoning}`);
+        return llmResult;
+    }
+
+    console.log(`[ExitDecision] ${signal.symbol}#${signal.id} LLM também inseguro (${(llmResult.confidence * 100).toFixed(1)}%) — HOLD`);
+    return { decision: 'HOLD', source: 'LLM', confidence: llmResult.confidence, reasoning: llmResult.reasoning };
 }
 
 // ─── Sanity test ──────────────────────────────────────────────────────────────
