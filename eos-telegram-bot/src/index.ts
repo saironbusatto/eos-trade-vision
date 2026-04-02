@@ -10,6 +10,7 @@ import { getDataService } from "./engine";
 import { NewsCollector } from "./services/NewsCollector";
 import { SentimentAnalyzer } from "./services/SentimentAnalyzer";
 import { mlRecalibrationService } from "./services/MLRecalibrationService";
+import { exitModelRecalibrationService } from "./services/ExitModelRecalibrationService";
 import { sqliteDatabase } from "./sqliteDatabase";
 import type { TradingSignal, AlertMessage } from "./types";
 
@@ -189,4 +190,8 @@ app.listen(PORT, () => {
     // Start weekly ML recalibration workflow (walk-forward guarded)
     mlRecalibrationService.start();
     console.log("🤖 MLRecalibrationService started - Weekly auto retraining enabled");
+
+    // Start exit model auto-retraining (Fase 4)
+    exitModelRecalibrationService.start();
+    console.log("🎯 ExitModelRecalibrationService started - Auto retraining on new exit data");
 });
