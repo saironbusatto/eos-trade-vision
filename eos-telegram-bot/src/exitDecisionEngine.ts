@@ -10,6 +10,8 @@
  * exatamente como ml/infer.py, para consistência com o pipeline existente.
  */
 
+import { spawn } from 'child_process';
+import * as path from 'path';
 import { Signal } from './sqliteDatabase';
 
 // ─── Feature flags (controlados pelo .env) ────────────────────────────────────
@@ -64,6 +66,7 @@ export interface ExitDecisionResult {
     source: DecisionSource;
     confidence: number;
     reasoning?: string;
+    probabilities?: Record<string, number>;
 }
 
 interface BinanceKline {
@@ -293,23 +296,121 @@ export async function fetchCounterfactualPrices(
     }
 }
 
-// ─── Decisão futura (Fases 2 e 3 — placeholder) ──────────────────────────────
+// ─── ML inference via Python subprocess ──────────────────────────────────────
+
+const PYTHON_BIN      = process.env.PYTHON_BIN ?? 'python3';
+const EXIT_MODEL_SCRIPT = path.resolve(
+    __dirname, '..', 'ml', 'exitDecisionModel.py'
+);
+
+interface MLExitRaw {
+    decision:      string;
+    confidence:    number;
+    probabilities?: Record<string, number>;
+    source?:       string;
+    error?:        string;
+    reason?:       string;
+}
+
+function runExitModelInference(features: ExitFeatures): Promise<MLExitRaw> {
+    return new Promise((resolve) => {
+        const payload = JSON.stringify({
+            pnl_pct:                features.pnl_pct,
+            time_in_trade_seconds:  features.time_in_trade_seconds,
+            distance_to_stop_pct:   features.distance_to_stop_pct,
+            distance_to_target_pct: features.distance_to_target_pct,
+            volume_ratio:           features.volume_ratio,
+            volatility_5m:          features.volatility_5m,
+            volatility_15m:         features.volatility_15m,
+            volatility_ratio:       features.volatility_ratio,
+            rsi_current:            features.rsi_current,
+            rsi_slope:              features.rsi_slope,
+            candles_in_favor:       features.candles_in_favor,
+            candles_against:        features.candles_against,
+            original_signal_score:  features.original_signal_score,
+            bid_ask_spread_pct:     features.bid_ask_spread_pct,
+        });
+
+        const childEnv = {
+            ...process.env,
+            ML_MODEL_DIR: process.env.ML_MODEL_DIR
+                ?? path.resolve(__dirname, '..', 'data', 'ml', 'models'),
+        };
+
+        const proc = spawn(PYTHON_BIN, [EXIT_MODEL_SCRIPT, '--action', 'predict', '--input', payload], { env: childEnv });
+
+        let stdout = '';
+        let resolved = false;
+
+        const timer = setTimeout(() => {
+            if (!resolved) {
+                resolved = true;
+                proc.kill();
+                resolve({ decision: 'HOLD', confidence: 0, source: 'FALLBACK', reason: 'timeout' });
+            }
+        }, 5000);
+
+        proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
+        proc.on('close', () => {
+            if (resolved) return;
+            resolved = true;
+            clearTimeout(timer);
+            try {
+                resolve(JSON.parse(stdout.trim()) as MLExitRaw);
+            } catch {
+                resolve({ decision: 'HOLD', confidence: 0, source: 'FALLBACK', reason: 'parse error' });
+            }
+        });
+        proc.on('error', () => {
+            if (!resolved) {
+                resolved = true;
+                clearTimeout(timer);
+                resolve({ decision: 'HOLD', confidence: 0, source: 'FALLBACK', reason: 'spawn error' });
+            }
+        });
+    });
+}
+
+// ─── Decisão de saída (Fase 2 — ML ativo) ────────────────────────────────────
 
 /**
- * Árbitro de saída (placeholder para Fases 2/3).
- * Na Fase 1 sempre retorna HARD_STOP/HOLD para não interferir no comportamento atual.
+ * Árbitro de saída.
+ * USE_ML_EXIT=true → chama ML; se confiança >= EXIT_ML_MIN_CONFIDENCE usa o resultado.
+ * Caso contrário retorna HOLD (deixa o hard stop decidir).
  */
 export async function makeExitDecision(
-    _signal: Signal,
-    _features: ExitFeatures
+    signal: Signal,
+    features: ExitFeatures
 ): Promise<ExitDecisionResult> {
-    // Fase 1: comportamento inalterado. A decisão real vem do hard stop em trendingScanner.
-    // Fases 2/3 substituirão este bloco.
-    return {
-        decision:   'HOLD',
-        source:     'HARD_STOP',
-        confidence: 1.0
-    };
+    if (!USE_ML_EXIT) {
+        return { decision: 'HOLD', source: 'HARD_STOP', confidence: 1.0 };
+    }
+
+    try {
+        const raw = await runExitModelInference(features);
+
+        if (raw.error || raw.source === 'FALLBACK') {
+            console.warn(`[ExitDecision] ML fallback for signal ${signal.id}: ${raw.reason ?? raw.error}`);
+            return { decision: 'HOLD', source: 'FALLBACK', confidence: 0 };
+        }
+
+        const decision  = (raw.decision ?? 'HOLD') as ExitDecision;
+        const conf      = raw.confidence ?? 0;
+
+        // Só age se confiança suficiente
+        if (conf >= EXIT_ML_MIN_CONFIDENCE) {
+            console.log(`[ExitDecision] Signal ${signal.id} → ${decision} (conf=${(conf * 100).toFixed(1)}%) [ML]`);
+            return { decision, source: 'ML', confidence: conf, probabilities: raw.probabilities };
+        }
+
+        // Confiança baixa → HOLD, aguarda hard stop
+        console.log(`[ExitDecision] Signal ${signal.id} → HOLD (ML conf=${(conf * 100).toFixed(1)}% < ${EXIT_ML_MIN_CONFIDENCE * 100}%) — low confidence`);
+        return { decision: 'HOLD', source: 'ML', confidence: conf, probabilities: raw.probabilities };
+
+    } catch (err) {
+        console.error(`[ExitDecision] Erro na inferência ML para signal ${signal.id}:`, err);
+        return { decision: 'HOLD', source: 'FALLBACK', confidence: 0 };
+    }
 }
 
 // ─── Sanity test ──────────────────────────────────────────────────────────────

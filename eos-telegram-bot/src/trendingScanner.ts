@@ -5,7 +5,7 @@ import { calculatePosition, getFundingRate } from "./leverageCalculator";
 import { getMacroAnalysis, getMacroForDB } from "./macroAnalyzer";
 import { getDataService } from "./engine";
 import { mlService } from "./mlService";
-import { collectExitFeatures, fetchCounterfactualPrices, USE_ML_EXIT } from "./exitDecisionEngine";
+import { collectExitFeatures, fetchCounterfactualPrices, makeExitDecision, USE_ML_EXIT } from "./exitDecisionEngine";
 
 // Default bankroll for calculations (user can override)
 const DEFAULT_BANKROLL = 1000; // $1000
@@ -827,9 +827,47 @@ export class TrendingScanner {
                 const age = Date.now() - new Date(signal.created_at).getTime();
                 const ageMinutes = Math.floor(age / (60 * 1000));
 
-                // ── Exit Decision Engine: coleta features (Fase 1 — apenas observação) ──
-                // USE_ML_EXIT=false → não altera a decisão, só registra para treinamento futuro
-                if (!USE_ML_EXIT) {
+                // ── Exit Decision Engine ──────────────────────────────────────
+                if (USE_ML_EXIT) {
+                    // Fase 2: ML ativo — coleta features e consulta modelo
+                    const features = await collectExitFeatures(signal, currentPrice).catch(() => null);
+                    if (features) {
+                        const decision = await makeExitDecision(signal, features);
+                        sqliteDatabase.logExitDecision({
+                            ...features,
+                            decision_source: decision.source,
+                            decision:        decision.decision,
+                            confidence:      decision.confidence,
+                            is_final:        false,
+                            captured_at:     features.captured_at
+                        });
+
+                        if (decision.decision === 'EXIT') {
+                            // ML quer sair — fecha como se fosse timeout mas com preço atual
+                            const profit_percent = signal.action === 'BUY'
+                                ? ((currentPrice - signal.entry_price) / signal.entry_price) * 100
+                                : ((signal.entry_price - currentPrice) / signal.entry_price) * 100;
+                            const result = profit_percent >= 0 ? 'WIN' : 'LOSS';
+
+                            const closeTimeMs = Date.now();
+                            sqliteDatabase.finalizeExitLog(signal.id, result as 'WIN' | 'LOSS', profit_percent, closeTimeMs);
+
+                            const macroAnalysis = await getMacroAnalysis();
+                            const macroData = getMacroForDB(macroAnalysis);
+                            sqliteDatabase.forceCloseSignal(signal.id, currentPrice, result as 'WIN' | 'LOSS', profit_percent, macroData);
+
+                            console.log(`[ExitDecision] ML EXIT signal ${signal.id} ${signal.symbol} @ ${currentPrice} (${result} ${profit_percent.toFixed(2)}%)`);
+                            await this.sendTimeoutResult(signal, result, currentPrice, profit_percent, ageMinutes);
+                            continue;
+                        }
+
+                        if (decision.decision === 'MOVE_STOP') {
+                            // Mover stop para breakeven — apenas loga por agora
+                            console.log(`[ExitDecision] MOVE_STOP signal ${signal.id} ${signal.symbol} — breakeven não implementado ainda, aguarda hard stop`);
+                        }
+                    }
+                } else {
+                    // Fase 1: só coleta, não interfere
                     collectExitFeatures(signal, currentPrice).then(features => {
                         if (!features) return;
                         sqliteDatabase.logExitDecision({
