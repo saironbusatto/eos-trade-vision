@@ -30,6 +30,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+from typing import Optional
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -137,16 +138,25 @@ class ExitDecisionModel:
             }
 
         X = self._prepare_features(features)
-        proba   = self.model.predict_proba(X)[0]
-        pred    = int(np.argmax(proba))
-        conf    = float(proba[pred])
+        raw_proba = self.model.predict_proba(X)[0]
+        class_names = self.metadata.get("class_names", ["EXIT", "HOLD"])
 
-        # Mapear índices para labels (respeita a ordem do LabelEncoder usado no treino)
-        classes = self.metadata.get("classes", [0, 1, 2])
-        proba_dict = {LABEL_MAP.get(int(c), str(c)): float(p) for c, p in zip(classes, proba)}
+        # Modelo binário retorna [P(class0), P(class1)], multiclass retorna N valores
+        if len(raw_proba) == 2 and len(class_names) == 2:
+            proba = raw_proba
+        else:
+            proba = raw_proba
+
+        pred = int(np.argmax(proba))
+        conf = float(proba[pred])
+
+        classes    = self.metadata.get("classes", list(range(len(class_names))))
+        proba_dict = {class_names[i]: float(proba[i]) for i in range(len(class_names))}
+
+        decision = class_names[pred] if pred < len(class_names) else "EXIT"
 
         return {
-            "decision":      LABEL_MAP.get(pred, "EXIT"),
+            "decision":      decision,
             "confidence":    conf,
             "probabilities": proba_dict,
             "source":        "ML"
@@ -165,7 +175,7 @@ class ExitDecisionModel:
 
 
 # ── Singleton ─────────────────────────────────────────────────────────────────
-_model_instance: ExitDecisionModel | None = None
+_model_instance: Optional[ExitDecisionModel] = None
 
 def get_model() -> ExitDecisionModel:
     global _model_instance
