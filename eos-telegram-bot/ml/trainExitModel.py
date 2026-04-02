@@ -80,7 +80,7 @@ RANDOM_STATE = 42
 # ── LightGBM hiperparâmetros (baseline conservador) ──────────────────────────
 LGBM_PARAMS = {
     "objective":       "multiclass",
-    "num_class":       3,
+    "num_class":       3,  # sobrescrito dinamicamente em train_model() com as classes reais
     "num_leaves":      31,
     "max_depth":       5,
     "learning_rate":   0.05,
@@ -229,7 +229,14 @@ def train_model(df: pd.DataFrame) -> tuple:
     le = LabelEncoder()
     y  = le.fit_transform(df["label"])
 
-    print(f"\n[Train] Classes: {list(le.classes_)} → {list(range(len(le.classes_)))}")
+    # Ajusta num_class dinamicamente (pode ser 2 se MOVE_STOP ainda não apareceu)
+    n_classes = len(le.classes_)
+    LGBM_PARAMS["num_class"] = n_classes
+    if n_classes == 2:
+        LGBM_PARAMS["objective"] = "binary"
+        LGBM_PARAMS.pop("num_class")
+
+    print(f"\n[Train] Classes: {list(le.classes_)} → {list(range(n_classes))}")
     print(f"[Train] Features: {FEATURE_COLS}")
     print(f"[Train] Total amostras: {len(X)}")
 
@@ -261,7 +268,7 @@ def train_model(df: pd.DataFrame) -> tuple:
 
     # Feature importance
     fi = dict(sorted(
-        zip(FEATURE_COLS, final_model.feature_importances_),
+        {col: int(imp) for col, imp in zip(FEATURE_COLS, final_model.feature_importances_)}.items(),
         key=lambda x: x[1], reverse=True
     ))
     print("\n[Train] Feature importance (gain):")
