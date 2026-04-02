@@ -1,23 +1,23 @@
-# EOS — Sistema de Sinais de Cripto (Hub) ✅ REVISADO
+# EOS — Sistema de Sinais de Cripto (Hub)
 
 > **Propósito:** Mapa centralizado do ecossistema EOS. Consulte para entender módulos, contratos e fluxos de dados.
 
 ---
 
-## 📦 Módulos (Status)
+## Módulos (Status)
 
 | Módulo | Status | Responsabilidade | Link |
-|--------|--------|------------------|------|
-| **Frontend** | ✅ Ativo | Dashboard React (SPA) | [`src/agents.md`](./src/agents.md) |
-| **Gateway** | ✅ Ativo | API Hub + WebSocket (Proxy reverso) | [`eos-gateway/agents.md`](./eos-gateway/agents.md) |
-| **Crypto Bot** | ✅ Ativo | Bot principal (Binance + Telegram) | [`eos-telegram-bot/agents.md`](./eos-telegram-bot/agents.md) |
-| **ML Service** | ✅ Ativo | Pipeline de treino e geração de modelos | [`eos-ml/agents.md`](./eos-ml/agents.md) |
-| **OFA Engine** | ✅ Ativo | Lib compartilhada (math puro, stateless) | [`eos-ofa-engine/agents.md`](./eos-ofa-engine/agents.md) |
-| **IQ Bot** | ⚠️ Legado | Forex/IQ Option (somente leitura histórica) | [`eos-iq-bot/agents.md`](./eos-iq-bot/agents.md) |
+| ------ | ------ | ---------------- | ---- |
+| **Frontend** | Ativo | Dashboard React (SPA) | [`src/agents.md`](./src/agents.md) |
+| **Gateway** | Ativo | API Hub + WebSocket (Proxy reverso) | [`eos-gateway/agents.md`](./eos-gateway/agents.md) |
+| **Crypto Bot** | Ativo | Bot principal (Binance + Telegram) | [`eos-telegram-bot/agents.md`](./eos-telegram-bot/agents.md) |
+| **ML Service** | Ativo | Pipeline de treino e geração de modelos | [`eos-ml/agents.md`](./eos-ml/agents.md) |
+| **OFA Engine** | Ativo | Lib compartilhada (math puro, stateless) | [`eos-ofa-engine/agents.md`](./eos-ofa-engine/agents.md) |
+| **IQ Bot** | Legado | Forex/IQ Option (somente leitura histórica) | [`eos-iq-bot/agents.md`](./eos-iq-bot/agents.md) |
 
 ---
 
-## 🔗 Grafo de Dependências
+## Grafo de Dependências
 
 ```mermaid
 graph TD
@@ -31,118 +31,104 @@ graph TD
 
 ---
 
-## 📜 Contratos Globais (Fonte da Verdade)
+## Contratos Globais (Fonte da Verdade)
 
-### 1) Signal (Payload principal)
+### Signal (Payload principal)
+
 - **Definição canônica:** Interface `TradingSignal` em [`src/lib/signalApi.ts`](./src/lib/signalApi.ts) (Frontend).
 - **Persistência:** Tabela `signals` em `eos-telegram-bot/data/eos.db`.
 - **Transformação:** DB row → JSON `TradingSignal` (via Gateway).
 - **Transporte:** REST (`GET /api/signals`) + WebSocket (`new_signal`).
 
 **Campos obrigatórios (v1.0):**
-- `symbol` (string, ex: BTCUSDT)
-- `action` ("BUY" | "SELL")
-- `price` (number, preço de entrada)
-- `timestamp` (ISO 8601 ou Unix, gerado pelo Bot)
-- `stopLoss` (number | null, opcional)
-- `takeProfit` (number | null, opcional)
 
-**Versionamento:** se adicionar/remover campos obrigatórios, considerar breaking change e bump de versão.
+- `symbol` — string, ex: BTCUSDT
+- `action` — "BUY" | "SELL"
+- `price` — number, preço de entrada
+- `timestamp` — ISO 8601 ou Unix, gerado pelo Bot
+- `stopLoss` — number | null
+- `takeProfit` — number | null
 
-### 2) Schema de Features (ML)
+### Schema de Features ML (entrada)
+
 - **Definição:** Interface `MLSignalFeatures` em [`eos-telegram-bot/src/mlService.ts`](./eos-telegram-bot/src/mlService.ts).
-- **Features atuais (v1.0):**
-  - `f_smart_money` (number)
-  - `f_imbalance` (number)
-  - `f_absorption` (number)
-- **Artefatos:** Modelos `.pkl` em `eos-ml/models/` (gerados pelo pipeline de treino).
+- **Features atuais (v1.0):** `f_smart_money`, `f_imbalance`, `f_absorption`, `f_price_context`, `f_trend`, `f_momentum`, `f_volume`.
+- **Artefatos:** Modelos `.pkl` em `data/ml/models/` (gerados pelo pipeline de treino).
 
-**Breaking Change:** Adicionar/remover/renomear feature exige:
-1. Atualizar interface `MLSignalFeatures`
-2. Retreinar modelos em `eos-ml`
-3. Validar compatibilidade de shape antes de deploy
-4. Documentar mudança no `CHANGELOG.md` ou ADR
+**Breaking Change:** Adicionar/remover/renomear feature exige retreino completo + validação de shape.
 
-### 3) Database (SQLite)
+### Schema de Features ML (saída — Exit Decision Engine)
+
+- **Definição:** Interface `ExitFeatures` em [`eos-telegram-bot/src/exitDecisionEngine.ts`](./eos-telegram-bot/src/exitDecisionEngine.ts).
+- **Features (14):** `pnl_pct`, `time_in_trade_seconds`, `distance_to_stop_pct`, `distance_to_target_pct`, `volume_ratio`, `volatility_5m`, `volatility_15m`, `volatility_ratio`, `rsi_current`, `rsi_slope`, `candles_in_favor`, `candles_against`, `original_signal_score`, `bid_ask_spread_pct`.
+- **Modelo:** `data/ml/models/exit_model.pkl` — LightGBM binário (EXIT vs HOLD).
+- **Retreino:** automático via `ExitModelRecalibrationService` a cada 30 novas operações fechadas.
+
+### Database (SQLite)
+
 - **Crypto (principal):** `eos-telegram-bot/data/eos.db`
-  - Tabelas: `signals`, `training_data`
-  - Migrations: Gerenciadas via código em `eos-telegram-bot/src/sqliteDatabase.ts`
+  - Tabelas: `signals`, `training_data`, `price_checkpoints`, `exit_decisions_log`, `app_settings`
+  - Migrations: gerenciadas via código em `eos-telegram-bot/src/sqliteDatabase.ts`
 - **Legado (IQ Bot):** `eos-iq-bot/data/eos-iq.db`
-  - Status: somente leitura para histórico (Gateway pode acessar opcionalmente)
-  - Objetivo futuro: migrar dados relevantes → `eos.db` e descontinuar
+  - Status: somente leitura para histórico
 
-### 4) Eventos WebSocket
+### Eventos WebSocket
+
 - **Canal:** Socket.io no Gateway (porta configurada via `.env`)
 - **Eventos (v1.0):**
-  - `connection`: Cliente conectado (ack automático)
-  - `new_signal`: Broadcast de novo sinal (payload = `TradingSignal` JSON)
+  - `connection` — cliente conectado (ack automático)
+  - `new_signal` — broadcast de novo sinal (payload = `TradingSignal` JSON)
 
 ---
 
-## ☑️ Regras de Compatibilidade (Cross-Módulo)
+## Regras de Compatibilidade (Cross-Módulo)
 
-Ao modificar qualquer contrato global, siga este checklist obrigatório:
+Ao modificar qualquer contrato global, siga este checklist:
 
-- [ ] **Signal (tipos/fields):**
-  - Atualizar `TradingSignal` em `src/lib/signalApi.ts`
-  - Atualizar queries SQL e mapper no Gateway (`eos-gateway/server.js`)
-  - Atualizar insert/update no Crypto Bot (`eos-telegram-bot/src/sqliteDatabase.ts`)
-  - Testar WS + REST com payload real
-  - Se breaking change: bump de versão de API e documentar
-
-- [ ] **ML Features (schema de input):**
-  - Atualizar interface `MLSignalFeatures` em `eos-telegram-bot/src/mlService.ts`
-  - Ajustar feature engineering em `eos-ml` (pipeline de treino)
-  - Retreinar modelos e validar shape de input/output
-  - Substituir `.pkl` antigos
-  - Validar compatibilidade de versão em runtime (se possível, adicionar check de versão no .pkl ou meta.json)
-
-- [ ] **Database Schema:**
-  - Criar script de migração (SQL ou código) em `eos-telegram-bot/src/sqliteDatabase.ts`
-  - Atualizar queries no Gateway
-  - Testar rollback (se aplicável)
-  - Documentar no `agents.md` do Crypto Bot
+- [ ] **Signal (tipos/fields):** atualizar `TradingSignal` no frontend, queries SQL no Gateway, insert/update no Bot
+- [ ] **ML Features entrada:** atualizar interface + retreinar modelos + substituir `.pkl` + validar shape
+- [ ] **ML Features saída (exit):** atualizar `ExitFeatures` + retreinar exit model + atualizar `EXIT_FEATURE_COLS`
+- [ ] **Database Schema:** criar script de migração, atualizar queries no Gateway, documentar aqui
 
 ---
 
-## 🧠 Skills Aplicadas (Referência Global)
+## Skills Aplicadas (Referência Global)
 
-Este projeto utiliza skills do índice global para orientar desenvolvimento. Sempre liste os skills no início de cada tarefa conforme regra global.
-
-**Skills principais:**
-- `backend-architect`: Arquitetura de API e serviços
-- `api-design-principles`: Design de contratos REST/WS
-- `async-python-patterns`: Pipeline ML e processamento assíncrono
-- `backtesting-frameworks`: Validação de sinais (roadmap)
-- `api-testing-observability-api-mock`: Testes e mocks
-
-**Índice completo:** `~/.gemini/antigravity/Skills/awesome-skills/skills_index.json`
+- `backend-architect` — arquitetura de API e serviços
+- `api-design-principles` — design de contratos REST/WS
+- `async-python-patterns` — pipeline ML e processamento assíncrono
+- `backtesting-frameworks` — validação de sinais (roadmap)
 
 ---
 
-## 🚀 Roadmap & Decisões Arquiteturais
+## Roadmap e Decisões Arquiteturais
 
-### Próximos passos sugeridos:
-- [x] Formalizar contratos (FEITO neste hub)
-- [ ] Criar ADR (Architecture Decision Records) para decisões críticas (ex.: escolha SQLite vs Postgres, estrutura de features ML)
-- [ ] Implementar validação de contrato em runtime (Zod no Gateway, Pydantic no ML)
-- [ ] Migrar histórico IQ Bot → `eos.db` e descontinuar `eos-iq.db`
-- [ ] Adicionar versionamento de modelo ML (meta.json com versão + libs)
+### Concluído
 
-### Decisões pendentes:
-- [ ] Autenticação no Gateway (JWT/OAuth? ou manter localhost-only?)
-- [ ] Estratégia de deploy (Docker Compose atual? Migrar pra K8s?)
-- [ ] Backup e disaster recovery do SQLite (cron? replicação?)
+- [x] Formalizar contratos (hub)
+- [x] Data Engine v2.1.1 (WebSocket + buffer local, recovery automático)
+- [x] Exit Decision Engine Fases 1–4 (coleta → ML → LLM → auto-retreino)
+- [x] Filtro horário-direcional com Wilson Score IC95
+- [x] Recalibração automática do modelo de entrada (walk-forward guarded)
 
----
+### Próximos passos
 
-## 📌 Referências Rápidas
-
-- **Comandos:** Ver `package.json` ou scripts em cada módulo
-- **Logs:** `docker-compose logs -f [service]` (se dockerizado) ou logs locais por módulo
-- **Testes:** Ver seção de testes em cada `agents.md` específico
+- [ ] MOVE_STOP real — mover stop para breakeven quando Exit Engine retornar MOVE_STOP
+- [ ] Dashboard de decisões de saída — ML vs LLM vs hard stop + outcomes
+- [ ] ADR (Architecture Decision Records) para decisões críticas
+- [ ] Validação de contrato em runtime (Zod no Gateway, Pydantic no ML)
+- [ ] Autenticação no Gateway (JWT/OAuth vs localhost-only)
 
 ---
 
-**Última atualização:** 01/02/2026
-**Mantedor:** @sairo (Analista TI, R|Fonseca / S-Iron.tech)
+## Referências Rápidas
+
+- **Infra AWS:** [`docs/INFRASTRUCTURE.md`](./docs/INFRASTRUCTURE.md)
+- **Algoritmo (TCC):** [`eos-telegram-bot/docs/ALGORITHM_TCC.md`](./eos-telegram-bot/docs/ALGORITHM_TCC.md)
+- **Data Engine:** [`eos-telegram-bot/docs/DATA_ENGINE.md`](./eos-telegram-bot/docs/DATA_ENGINE.md)
+- **Análise Estatística:** [`docs/ESTRATEGIA_ANALISE_ESTATISTICA.md`](./docs/ESTRATEGIA_ANALISE_ESTATISTICA.md)
+
+---
+
+**Última atualização:** 02/04/2026
+**Mantedor:** @sairo (S-Iron.tech)

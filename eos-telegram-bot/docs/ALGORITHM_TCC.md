@@ -329,7 +329,62 @@ Atualização da banca:
 - `newBalance = oldBalance + pnlNet`
 - piso de segurança: `finalBalance = max(newBalance, 0)`
 
-## 16. Interpretação quantitativa para TCC
+## 16. Exit Decision Engine (gestão de saída por ML + LLM)
+
+O sistema não depende exclusivamente de stop/target fixo para encerrar operações. A cada 5 minutos, enquanto um sinal permanece aberto, o Exit Decision Engine reavalia as condições de mercado.
+
+### 16.1 Features de saída (14 variáveis)
+
+Coletadas via `collectExitFeatures()` usando REST Binance (klines 1m + bookTicker):
+
+- `pnl_pct` — PnL percentual corrente da posição
+- `time_in_trade_seconds` — tempo desde a entrada
+- `distance_to_stop_pct` / `distance_to_target_pct` — distâncias ao stop e target
+- `volume_ratio` — volume do último candle / média dos últimos 15
+- `volatility_5m` / `volatility_15m` — desvio padrão dos retornos percentuais
+- `volatility_ratio` — razão 5m/15m (detecta expansão de volatilidade)
+- `rsi_current` — RSI-14 (Wilder smoothing)
+- `rsi_slope` — RSI[0] - RSI[-3] (tendência do momentum)
+- `candles_in_favor` / `candles_against` — bias de candles desde a entrada
+- `original_signal_score` — score OFA do sinal original
+- `bid_ask_spread_pct` — spread percentual via bookTicker
+
+### 16.2 Fluxo de decisão
+
+```text
+Fase 2 — ML (LightGBM):
+  P(EXIT) >= 75% → fecha imediatamente
+  P(EXIT) < 75%  → escalona para LLM
+
+Fase 3 — LLM (GPT-4o-mini, se trade >= 10 min):
+  conf >= 70% → fecha ou mantém conforme resposta
+  conf < 70%  → HOLD (hard stop decide)
+
+Fallback → stop/target original
+```
+
+### 16.3 Modelo ML de saída
+
+- **Algoritmo:** LightGBM binário (EXIT vs HOLD)
+- **Treino:** `ml/trainExitModel.py` com StratifiedKFold(5) walk-forward
+- **Labels:** HOLD (intermediária + outcome=WIN), EXIT (final + outcome=LOSS), MOVE_STOP (lucro intermediário + cf_pnl_5m < pnl_pct)
+- **Resultado (Abr/2026):** CV F1 weighted = 0.9283 ± 0.018 (1158 observações, 203 sinais)
+- **Features mais importantes:** `time_in_trade_seconds`, `rsi_slope`, `pnl_pct`
+
+### 16.4 Counterfactual
+
+Para cada operação encerrada, ~16 minutos após o fechamento o sistema busca 3 klines de 5m e registra o PnL hipotético que teria sido obtido permanecendo na posição por +5m, +10m e +15m. Esses dados alimentam o retreino com labels mais precisos.
+
+### 16.5 Retreino automático (Fase 4)
+
+`ExitModelRecalibrationService` monitora o volume de novas operações fechadas:
+
+- trigger: 30 novas operações fechadas desde o último treino
+- mínimo absoluto: 300 operações
+- aceita novo modelo apenas se `cv_f1_mean` não cair > 2% vs baseline
+- rollback automático em falha + notificação Telegram
+
+## 17. Interpretação quantitativa para TCC
 
 Este desenho separa três camadas estatísticas:
 
