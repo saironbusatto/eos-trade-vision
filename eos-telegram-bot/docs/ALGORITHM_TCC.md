@@ -232,6 +232,45 @@ Resultado prático:
 - Engine target coverage: `3300s`
 - Engine max lag: `8000ms`
 - Recalibração: intervalo `168h`, mínimo `400` registros
+- Hard blacklist de risco:
+  - `BLOCKED_HOURS_UTC=1,2,3,14,22,23`
+  - `BLOCKED_SYMBOLS=SUIUSDT,TAOUSDT,BNBUSDT,ADAUSDT`
+
+## 12.1 Macro regime sem Perplexity (heurístico determinístico)
+
+### Motivação
+
+Em produção, a dependência externa de macro via Perplexity sofreu erros recorrentes de cota (`401 / insufficient_quota`). Isso introduziu registros `no_macro` no dataset de treino, degradando significativamente o edge histórico.
+
+### Nova modelagem
+
+Fontes:
+- `BTCUSDT` e `ETHUSDT` (variação 24h pública da Binance)
+
+Definições:
+- `avg_change = (btc_change + eth_change) / 2`
+- `sentiment(change)`:
+  - `BULLISH` se `change >= +1.25%`
+  - `BEARISH` se `change <= -1.25%`
+  - `NEUTRAL` caso contrário
+- `confidence = clamp(0.45 + |avg_change| / 8, 0.45, 0.82)`
+- `fear_greed = clamp(50 + avg_change * 7, 5, 95)`
+- `risk_sentiment`:
+  - `RISK_ON` se `avg_change >= +1`
+  - `RISK_OFF` se `avg_change <= -1`
+  - `NEUTRAL` caso contrário
+
+Recomendação:
+- `AVOID` se bearish com confiança alta
+- `AGGRESSIVE` se bullish forte + risk-on
+- `NORMAL` se bullish moderado
+- `CONSERVATIVE` no restante
+
+Propriedades:
+- determinístico e auditável
+- sem custo variável por token
+- robusto a indisponibilidade de LLM externa
+- mantém schema e features macro do ML sem quebra
 
 ## 13. Justificativa metodológica (por que funciona)
 
@@ -404,3 +443,127 @@ Em termos de pesquisa:
 - custos usam taxa fixa (não distingue maker/taker dinâmico por ativo/hora);
 - filtro de notícias depende de classificação semântica e pode ter latência de ingestão;
 - controle de risco é por regra fixa (10% da banca por entrada), ainda sem otimização por volatilidade da carteira.
+
+## 18. Decisões operacionais recentes (abr/2026)
+
+### 18.1 Hard blacklist por hora e símbolo
+
+Com base no histórico validado, foram adicionados dois gates prévios ao processamento completo:
+
+1. **Hora UTC bloqueada** (`BLOCKED_HOURS_UTC`):
+   - evita janelas com WR historicamente baixo e expectancy negativa.
+2. **Símbolo bloqueado** (`BLOCKED_SYMBOLS`):
+   - evita ativos com performance persistentemente abaixo do baseline.
+
+Efeito esperado:
+- menor cobertura (menos sinais)
+- maior qualidade média por sinal
+- redução de drawdown em regimes adversos
+
+### 18.2 Integridade de macro no fechamento
+
+Antes, parte dos sinais fechados por stop/target podia gerar linha de treino sem macro preenchido.
+Agora, todos os caminhos de fechamento (`TP/SL`, timeout, `EXIT` do motor de saída) propagam `macroData` para `ml_training`.
+
+Impacto técnico:
+- elimina crescimento de `no_macro` em novos dados
+- estabiliza inferência de features categóricas macro
+- reduz risco de viés de amostragem no retreino automático
+
+### 18.3 Trade-off formal
+
+A estratégia migra de **maximizar volume de entradas** para **maximizar qualidade condicional da entrada**.
+Formalmente, trocamos:
+
+- objetivo implícito anterior: `max N_trades`
+- objetivo atual: `max E[profit | filters]`, com restrição operacional `N_trades >= N_min`
+
+Esse ajuste é consistente com a meta de longo prazo de compounding robusto.
+
+## 19. Validated Subset Filter — validação walk-forward com dado real (jul/2026)
+
+### 19.1 Contexto
+
+Em 06/07/2026, a infraestrutura foi migrada de um EC2 (AWS `sa-east-1`) para um VPS Oracle,
+consolidando o banco de produção real (`crypto_signals.json`, 18.207 sinais fechados,
+06/fev–06/jul/2026, `WIN=8894 LOSS=9313`, win rate 48,85%). Essa migração expôs, pela primeira
+vez, o histórico completo de produção — as análises anteriores rodavam sobre bancos parciais ou
+vazios (cópias/staging desatualizadas).
+
+### 19.2 O problema encontrado
+
+O edge bruto médio por trade é `+0,0086%` (estatisticamente indistinguível de zero) e o profit
+factor bruto agregado é `1,03–1,11`, o que parece inofensivo isoladamente. Mas simulando os
+18.207 trades reais, em ordem cronológica, com o próprio position sizing do bot
+(`RISK_PERCENT=2%` fixo, `leverageCalculator.ts`) e a taxa real da Binance Futures (taker
+0,04% por lado, 0,08% ida-e-volta):
+
+- **capital composto final: -99,9999997%** (ruína completa)
+- **drawdown máximo: 99,9999999%**
+- mesmo **sem taxa** (cenário otimista), o drawdown máximo bruto já é **99,7%**
+
+Causa raiz: a taxa é cobrada em **todo** trade, independente do resultado — em alta frequência
+(~121 sinais/dia), esse custo fixo funciona como um imposto que consome qualquer edge marginal
+por composição. Profit factor agregado > 1 **não é suficiente** para evitar ruína quando o
+volume de trades é alto e a margem é fina.
+
+### 19.3 Metodologia de validação
+
+Split cronológico 70/30 (não aleatório — para evitar vazamento temporal):
+
+- **Treino:** 06/fev/2026 00:23 → 09/mar/2026 21:17 (12.744 trades)
+- **Teste:** 09/mar/2026 21:17 → 06/jul/2026 12:52 (5.463 trades)
+
+Candidatos foram selecionados **usando apenas o treino** (símbolo, dia da semana UTC, célula
+hora×direção) e depois avaliados no teste, nunca visto durante a seleção.
+
+### 19.4 Resultado — o que sobrevive fora da amostra
+
+| Recorte | Treino (PF) | Teste (PF) | Sobreviveu? |
+|---|---|---|---|
+| TRXUSDT (melhor símbolo isolado no treino) | 1,44 | **0,20** (n=5) | ❌ não — overfitting clássico |
+| "Quarta-feira" (melhor dia isolado no treino) | 1,32 | 1,04 | ⚠️ degradou bastante |
+| Símbolos: BTC, ZEC, ETH, XRP, DOGE, PEPE | ≥0,98 | ≥1,02 | ✅ consistente nos dois lados |
+| Dias: quarta(3), sexta(5), sábado(6) UTC | ≥1,09 | ≥1,04 | ✅ consistente |
+| Células hora×direção: `12:SELL, 7:BUY, 9:SELL, 8:BUY` | 1,46–2,09 | 0,90–1,79 (4 sobreviveram) | ✅ as 4 mais fortes se mantiveram |
+
+Simulação de capital (2% risco + taxa real) por filtro, no período de teste:
+
+| Filtro | n trades | Capital final |
+|---|---|---|
+| Sem filtro (baseline) | 5.463 | -100% |
+| Só símbolos validados | 2.208 | -94,1% |
+| Só dias validados | 2.152 | -94,1% |
+| Só hora×direção validada | 912 | -2,5% |
+| **Interseção dos três** | **136** | **-0,2%** |
+| Interseção + taxa maker (0,04%) | 136 | **+18,4%** |
+
+Conclusão: **nenhum filtro isolado escapa da ruína** — só a interseção dos três (que corta o
+volume para ~2,5% do original) sai do território de destruição de capital, e só fica
+claramente positiva quando combinada com execução maker. O mesmo filtro aplicado ao treino
+(n=202) rendeu +58,1%, confirmando consistência nos dois lados.
+
+### 19.5 Implementação
+
+`src/trendingScanner.ts`:
+
+- `ENABLE_VALIDATED_SUBSET_FILTER` (default `true`) — liga/desliga o gate.
+- `VALIDATED_SUBSET_SYMBOLS` (default `BTCUSDT,ZECUSDT,ETHUSDT,XRPUSDT,DOGEUSDT,PEPEUSDT`)
+- `VALIDATED_SUBSET_DAYS_UTC` (default `3,5,6` — quarta, sexta, sábado)
+- `VALIDATED_SUBSET_HOUR_ACTION_CELLS` (default `12:SELL,7:BUY,9:SELL,8:BUY`)
+- `DEFAULT_ORDER_TYPE` (default `MAKER`, era `TAKER` hardcoded antes de 06/07/2026) —
+  afeta a taxa assumida no cálculo de posição e o texto sugerido no sinal do Telegram.
+
+Todos os três filtros do recorte (símbolo, dia, célula hora×direção) precisam passar
+simultaneamente — é uma interseção, não uma união.
+
+### 19.6 Limitações e próxima revisão
+
+- `n=136` no teste é uma amostra pequena — o resultado (-0,2%/+18,4% conforme taxa) tem
+  intervalo de confiança largo. Recomendado operar em paper trading por 4–6 semanas antes de
+  qualquer capital real, mesmo com o filtro ativo.
+- O split 70/30 usa só 5 meses de dado (regime de mercado único — pode não persistir em bull/
+  bear diferentes).
+- **Revisão trimestral obrigatória**: reavaliar os quatro conjuntos (`VALIDATED_SUBSET_*`) com
+  o dado acumulado desde a última validação, repetindo o split cronológico. Não estender o
+  período de validação indefinidamente sem reamostrar — regime de cripto muda rápido.

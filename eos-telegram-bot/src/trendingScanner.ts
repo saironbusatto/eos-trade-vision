@@ -24,6 +24,15 @@ function envBool(name: string, fallback: boolean): boolean {
     return raw.toLowerCase() === 'true';
 }
 
+function envList(name: string, fallback: string[]): string[] {
+    const raw = process.env[name];
+    if (!raw) return fallback;
+    return raw
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean);
+}
+
 function clamp(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, value));
 }
@@ -34,12 +43,22 @@ const RISK_TARGET_MIN_PERCENT = envNumber('RISK_TARGET_MIN_PERCENT', 0.35);
 const RISK_TARGET_MAX_PERCENT = envNumber('RISK_TARGET_MAX_PERCENT', 0.90);
 const RISK_TARGET_STOP_RATIO = envNumber('RISK_TARGET_STOP_RATIO', 0.80);
 const RISK_VOL_TO_STOP_MULTIPLIER = envNumber('RISK_VOL_TO_STOP_MULTIPLIER', 0.70);
+// Ordem padrão sugerida ao usuário (afeta a taxa assumida no cálculo de posição e no texto do sinal).
+// Trocado de TAKER para MAKER em 2026-07-06: validação com dado real mostrou que o filtro combinado
+// (ver VALIDATED_SUBSET_* abaixo) só escapa da ruína com taxa maker — ver docs/ALGORITHM_TCC.md.
+const DEFAULT_ORDER_TYPE: 'MAKER' | 'TAKER' = (process.env.DEFAULT_ORDER_TYPE || 'MAKER').toUpperCase() === 'TAKER' ? 'TAKER' : 'MAKER';
 const ENABLE_HOUR_DIRECTION_FILTER = envBool('ENABLE_HOUR_DIRECTION_FILTER', true);
 const HOUR_DIRECTION_MIN_TRADES = envNumber('HOUR_DIRECTION_MIN_TRADES', 80);
 const HOUR_DIRECTION_MIN_WINRATE = envNumber('HOUR_DIRECTION_MIN_WINRATE', 52);
 const HOUR_DIRECTION_MIN_WINRATE_CI95_LOW = envNumber('HOUR_DIRECTION_MIN_WINRATE_CI95_LOW', 45);
 const ENABLE_EXPECTANCY_GATE = envBool('ENABLE_EXPECTANCY_GATE', true);
 const HOUR_DIRECTION_MIN_EXPECTANCY_CI95_LOW = envNumber('HOUR_DIRECTION_MIN_EXPECTANCY_CI95_LOW', 0);
+// Deadlock fix: getEdgeMatrix só retorna uma célula (hora,direção) com >= HOUR_DIRECTION_MIN_TRADES (80)
+// trades fechados nela. Com 0 trades fechados no total, toda célula fica sem dado e todo sinal era
+// rejeitado para sempre — o sistema nunca conseguia acumular os 80 trades que ele mesmo exige.
+// Enquanto o total de trades fechados (agregado) estiver abaixo deste piso, suspende o filtro
+// hora/direção para permitir a coleta do histórico real; acima do piso, volta ao rigor normal.
+const HOUR_DIRECTION_BOOTSTRAP_TOTAL_TRADES = envNumber('HOUR_DIRECTION_BOOTSTRAP_TOTAL_TRADES', 50);
 const ENGINE_TARGET_COVERAGE_SEC = envNumber('ENGINE_TARGET_COVERAGE_SEC', 3300);
 const ENABLE_UNIFIED_DECISION_SCORE = envBool('ENABLE_UNIFIED_DECISION_SCORE', true);
 const UNIFIED_DECISION_MIN_SCORE = envNumber('UNIFIED_DECISION_MIN_SCORE', 0.62);
@@ -57,6 +76,35 @@ const ENABLE_CONTEXT_FILTER = envBool('ENABLE_CONTEXT_FILTER', true);
 const CONTEXT_FILTER_REQUIRE_SM_ALIGNED = envBool('CONTEXT_FILTER_REQUIRE_SM_ALIGNED', true);
 const CONTEXT_FILTER_MAX_SELL_VOLUME_RATIO = envNumber('CONTEXT_FILTER_MAX_SELL_VOLUME_RATIO', 1.5);
 const CONTEXT_FILTER_CONTEXT_SCORE_BONUS = envNumber('CONTEXT_FILTER_CONTEXT_SCORE_BONUS', 0.05);
+// ponytail: defaults herdados de análise histórica externa ao banco atual (crypto_signals.json não
+// tem esse histórico — ver HOUR_DIRECTION_BOOTSTRAP_TOTAL_TRADES acima). Risco real de overfitting/
+// regime shift sem revalidação. Upgrade: depois que o bootstrap acumular ~2-3 semanas de trades reais,
+// comparar contra o edge matrix (Wilson CI95) e remover/relaxar entradas que não se sustentam nos dados.
+const BLOCKED_SYMBOLS = new Set(
+    envList('BLOCKED_SYMBOLS', ['SUIUSDT', 'TAOUSDT', 'BNBUSDT', 'ADAUSDT']).map(s => s.toUpperCase())
+);
+// Filtro de recorte validado por walk-forward (treino 06/fev–09/mar/2026, teste 09/mar–06/jul/2026,
+// dado real de produção). Só symbol × dia-da-semana × hora-direção que mostraram profit factor > 1
+// EM AMBAS as janelas (não só na amostra cheia) entram aqui — ver docs/ALGORITHM_TCC.md § Validated
+// Subset Filter para a metodologia completa e os números. Sem isso, a simulação com risco real (2%
+// por trade) + taxa mostrou ruína total (-100%) mesmo com profit factor bruto de 1,11.
+// Upgrade: reavaliar trimestralmente com o dado novo acumulado desde a última validação.
+const ENABLE_VALIDATED_SUBSET_FILTER = envBool('ENABLE_VALIDATED_SUBSET_FILTER', true);
+const VALIDATED_SUBSET_SYMBOLS = new Set(
+    envList('VALIDATED_SUBSET_SYMBOLS', ['BTCUSDT', 'ZECUSDT', 'ETHUSDT', 'XRPUSDT', 'DOGEUSDT', 'PEPEUSDT']).map(s => s.toUpperCase())
+);
+const VALIDATED_SUBSET_DAYS_UTC = new Set(
+    // 0=domingo, 1=segunda, ..., 3=quarta, 5=sexta, 6=sábado (UTC)
+    envList('VALIDATED_SUBSET_DAYS_UTC', ['3', '5', '6']).map(v => Number(v))
+);
+const VALIDATED_SUBSET_HOUR_ACTION_CELLS = new Set(
+    envList('VALIDATED_SUBSET_HOUR_ACTION_CELLS', ['12:SELL', '7:BUY', '9:SELL', '8:BUY'])
+);
+const BLOCKED_HOURS_UTC = new Set(
+    envList('BLOCKED_HOURS_UTC', ['1', '2', '3', '14', '22', '23'])
+        .map(v => Number(v))
+        .filter(v => Number.isInteger(v) && v >= 0 && v <= 23)
+);
 
 // Format price with dynamic decimals based on value
 function formatPrice(price: number): string {
@@ -131,6 +179,12 @@ const DATA_COLLECTION_MODE = false; // false = produção com threshold 70%
 const MIN_SCORE = DATA_COLLECTION_MODE ? 40 : 70; // 40% coleta, 70% produção
 const SCAN_INTERVAL = 10 * 60 * 1000; // 10 minutos
 const VALIDATION_INTERVAL = 5 * 60 * 1000; // Valida a cada 5 min
+const SIGNAL_MAX_AGE_MIN = Math.max(5, envNumber('SIGNAL_MAX_AGE_MIN', 45));
+const TIMEOUT_LOSS_GRACE_ENABLED = envBool('TIMEOUT_LOSS_GRACE_ENABLED', true);
+const SIGNAL_TIMEOUT_LOSS_GRACE_MIN = Math.max(0, envNumber('SIGNAL_TIMEOUT_LOSS_GRACE_MIN', 15));
+const SIGNAL_FORCE_CLOSE_MAX_AGE_MIN = SIGNAL_MAX_AGE_MIN + SIGNAL_TIMEOUT_LOSS_GRACE_MIN;
+const SIGNAL_MAX_AGE_MS = SIGNAL_MAX_AGE_MIN * 60 * 1000;
+const SIGNAL_FORCE_CLOSE_MAX_AGE_MS = SIGNAL_FORCE_CLOSE_MAX_AGE_MIN * 60 * 1000;
 
 // Stablecoins a serem excluídas (não faz sentido tradear stablecoins)
 const EXCLUDED_STABLECOINS = [
@@ -466,6 +520,12 @@ export class TrendingScanner {
     private async analyzeAll(): Promise<OFASignal[]> {
         const validSignals: OFASignal[] = [];
         const hourUtc = new Date().getUTCHours();
+        const dowUtc = new Date().getUTCDay();
+        if (BLOCKED_HOURS_UTC.has(hourUtc)) {
+            console.log(`[TimingFilter] Hora ${hourUtc} UTC bloqueada por configuração (BLOCKED_HOURS_UTC).`);
+            return validSignals;
+        }
+
         const directionalStats = ENABLE_HOUR_DIRECTION_FILTER
             ? sqliteDatabase.getEdgeMatrix(HOUR_DIRECTION_MIN_TRADES)
             : [];
@@ -486,27 +546,47 @@ export class TrendingScanner {
         }
 
         for (const coin of this.trendingCoins) {
+            if (BLOCKED_SYMBOLS.has(coin.symbol.toUpperCase())) {
+                console.log(`[SymbolFilter] ${coin.symbol} rejeitado (BLOCKED_SYMBOLS).`);
+                continue;
+            }
             const signal = await this.analyzeOFA(coin);
 
             if (signal && signal.score >= MIN_SCORE) {
                 const action = signal.direction === "LONG" ? "BUY" : "SELL";
+
+                if (ENABLE_VALIDATED_SUBSET_FILTER) {
+                    const symbolOk = VALIDATED_SUBSET_SYMBOLS.has(signal.symbol.toUpperCase());
+                    const dayOk = VALIDATED_SUBSET_DAYS_UTC.has(dowUtc);
+                    const cellOk = VALIDATED_SUBSET_HOUR_ACTION_CELLS.has(`${hourUtc}:${action}`);
+                    if (!symbolOk || !dayOk || !cellOk) {
+                        console.log(`[ValidatedSubset] ${signal.symbol} ${action} REJEITADO - fora do recorte validado (symbol=${symbolOk}, dia=${dayOk}, hora×direção=${cellOk})`);
+                        continue;
+                    }
+                }
+
                 if (ENABLE_HOUR_DIRECTION_FILTER) {
-                    const edge = edgeMap.get(`${hourUtc}:${action}`);
-                    if (!edge) {
-                        console.log(`[TimingFilter] ${signal.symbol} ${action} REJEITADO - sem histórico suficiente para hora ${hourUtc} UTC`);
-                        continue;
-                    }
-                    if (edge.win_rate < HOUR_DIRECTION_MIN_WINRATE) {
-                        console.log(`[TimingFilter] ${signal.symbol} ${action} REJEITADO - WR ${edge.win_rate.toFixed(1)}% < ${HOUR_DIRECTION_MIN_WINRATE}% (hora ${hourUtc} UTC, n=${edge.trades})`);
-                        continue;
-                    }
-                    if (edge.win_rate_ci95_low < HOUR_DIRECTION_MIN_WINRATE_CI95_LOW) {
-                        console.log(`[TimingFilter] ${signal.symbol} ${action} REJEITADO - IC95 low WR ${edge.win_rate_ci95_low.toFixed(1)}% < ${HOUR_DIRECTION_MIN_WINRATE_CI95_LOW}% (hora ${hourUtc} UTC, n=${edge.trades})`);
-                        continue;
-                    }
-                    if (ENABLE_EXPECTANCY_GATE && edge.expectancy_ci95_low <= HOUR_DIRECTION_MIN_EXPECTANCY_CI95_LOW) {
-                        console.log(`[TimingFilter] ${signal.symbol} ${action} REJEITADO - IC95 low expectancy ${edge.expectancy_ci95_low.toFixed(3)}% <= ${HOUR_DIRECTION_MIN_EXPECTANCY_CI95_LOW.toFixed(3)}% (mean=${edge.expectancy.toFixed(3)}%, hora ${hourUtc} UTC, n=${edge.trades})`);
-                        continue;
+                    const totalClosedTrades = sqliteDatabase.getTotalClosedTrades();
+                    if (totalClosedTrades < HOUR_DIRECTION_BOOTSTRAP_TOTAL_TRADES) {
+                        console.log(`[TimingFilter] Bootstrap (${totalClosedTrades}/${HOUR_DIRECTION_BOOTSTRAP_TOTAL_TRADES} trades fechados) - filtro hora/direção suspenso para coletar histórico real`);
+                    } else {
+                        const edge = edgeMap.get(`${hourUtc}:${action}`);
+                        if (!edge) {
+                            console.log(`[TimingFilter] ${signal.symbol} ${action} REJEITADO - sem histórico suficiente para hora ${hourUtc} UTC`);
+                            continue;
+                        }
+                        if (edge.win_rate < HOUR_DIRECTION_MIN_WINRATE) {
+                            console.log(`[TimingFilter] ${signal.symbol} ${action} REJEITADO - WR ${edge.win_rate.toFixed(1)}% < ${HOUR_DIRECTION_MIN_WINRATE}% (hora ${hourUtc} UTC, n=${edge.trades})`);
+                            continue;
+                        }
+                        if (edge.win_rate_ci95_low < HOUR_DIRECTION_MIN_WINRATE_CI95_LOW) {
+                            console.log(`[TimingFilter] ${signal.symbol} ${action} REJEITADO - IC95 low WR ${edge.win_rate_ci95_low.toFixed(1)}% < ${HOUR_DIRECTION_MIN_WINRATE_CI95_LOW}% (hora ${hourUtc} UTC, n=${edge.trades})`);
+                            continue;
+                        }
+                        if (ENABLE_EXPECTANCY_GATE && edge.expectancy_ci95_low <= HOUR_DIRECTION_MIN_EXPECTANCY_CI95_LOW) {
+                            console.log(`[TimingFilter] ${signal.symbol} ${action} REJEITADO - IC95 low expectancy ${edge.expectancy_ci95_low.toFixed(3)}% <= ${HOUR_DIRECTION_MIN_EXPECTANCY_CI95_LOW.toFixed(3)}% (mean=${edge.expectancy.toFixed(3)}%, hora ${hourUtc} UTC, n=${edge.trades})`);
+                            continue;
+                        }
                     }
                 }
 
@@ -808,8 +888,6 @@ export class TrendingScanner {
 
         console.log(`[TrendingScanner] Validating ${pending.length} pending signals...`);
 
-        const MAX_AGE_MS = 45 * 60 * 1000;  // 45 minutos máximo
-
         // Coletar status updates para enviar consolidado
         const statusUpdates: Array<{
             signal: any;
@@ -823,6 +901,9 @@ export class TrendingScanner {
                 // Get current price
                 const currentPrice = await this.getCurrentPrice(signal.symbol);
                 if (!currentPrice) continue;
+
+                const macroAnalysis = await getMacroAnalysis();
+                const macroData = getMacroForDB(macroAnalysis);
 
                 const age = Date.now() - new Date(signal.created_at).getTime();
                 const ageMinutes = Math.floor(age / (60 * 1000));
@@ -852,12 +933,11 @@ export class TrendingScanner {
                             const closeTimeMs = Date.now();
                             sqliteDatabase.finalizeExitLog(signal.id, result as 'WIN' | 'LOSS', profit_percent, closeTimeMs);
 
-                            const macroAnalysis = await getMacroAnalysis();
-                            const macroData = getMacroForDB(macroAnalysis);
                             sqliteDatabase.forceCloseSignal(signal.id, currentPrice, result as 'WIN' | 'LOSS', profit_percent, macroData);
 
                             console.log(`[ExitDecision] ML EXIT signal ${signal.id} ${signal.symbol} @ ${currentPrice} (${result} ${profit_percent.toFixed(2)}%)`);
-                            await this.sendTimeoutResult(signal, result, currentPrice, profit_percent, ageMinutes);
+                            const timeoutTag = age >= SIGNAL_FORCE_CLOSE_MAX_AGE_MS ? 'TIMEOUT_MAX_AGE' : 'TIMEOUT';
+                    await this.sendTimeoutResult(signal, result, currentPrice, profit_percent, ageMinutes, timeoutTag);
                             continue;
                         }
 
@@ -882,7 +962,7 @@ export class TrendingScanner {
                 }
 
                 // 1. Verificar se bateu stop ou target
-                const validation = sqliteDatabase.validateSignal(signal.id, currentPrice);
+                const validation = sqliteDatabase.validateSignal(signal.id, currentPrice, macroData);
 
                 if (validation && validation.result !== 'PENDING') {
                     // ── Exit log: marca fechamento real ────────────────────────
@@ -894,17 +974,28 @@ export class TrendingScanner {
                     continue;
                 }
 
-                // 2. Se passou 45 min, força fechamento no preço atual
-                if (age >= MAX_AGE_MS) {
+                // 2. Se passou a idade mínima, tenta fechamento no preço atual.
+                //    Se estiver negativo, pode segurar por uma "grace window"
+                //    para evitar LOSS automático no timeout inicial.
+                if (age >= SIGNAL_MAX_AGE_MS) {
                     const profit_percent = signal.action === 'BUY'
                         ? ((currentPrice - signal.entry_price) / signal.entry_price) * 100
                         : ((signal.entry_price - currentPrice) / signal.entry_price) * 100;
 
                     const result = profit_percent >= 0 ? 'WIN' : 'LOSS';
 
-                    // Fetch macro data for ML training
-                    const macroAnalysis = await getMacroAnalysis();
-                    const macroData = getMacroForDB(macroAnalysis);
+                    const inLossGraceWindow = TIMEOUT_LOSS_GRACE_ENABLED
+                        && result === 'LOSS'
+                        && age < SIGNAL_FORCE_CLOSE_MAX_AGE_MS;
+
+                    if (inLossGraceWindow) {
+                        console.log(
+                            `[TrendingScanner] Timeout grace for #${signal.id} ${signal.symbol}: ` +
+                            `LOSS ${profit_percent.toFixed(2)}% @ ${ageMinutes}min, ` +
+                            `aguardando até ${SIGNAL_FORCE_CLOSE_MAX_AGE_MIN}min`
+                        );
+                        continue;
+                    }
 
                     // ── Exit log: marca fechamento por timeout ─────────────────
                     const closeTimeMs = Date.now();
@@ -913,7 +1004,8 @@ export class TrendingScanner {
                     // Force close - atualiza no banco com macro data
                     sqliteDatabase.forceCloseSignal(signal.id, currentPrice, result as 'WIN' | 'LOSS', profit_percent, macroData);
 
-                    await this.sendTimeoutResult(signal, result, currentPrice, profit_percent, ageMinutes);
+                    const timeoutTag = age >= SIGNAL_FORCE_CLOSE_MAX_AGE_MS ? 'TIMEOUT_MAX_AGE' : 'TIMEOUT';
+                    await this.sendTimeoutResult(signal, result, currentPrice, profit_percent, ageMinutes, timeoutTag);
                     continue;
                 }
 
@@ -999,7 +1091,8 @@ export class TrendingScanner {
             const direction = signal.action === 'BUY' ? '🟩 LONG' : '🟥 SHORT';
             message += `${emoji} *#${signal.id} ${symbol}* ${direction} - ${ageMinutes}min\n`;
             message += `Atual: ${formatPrice(currentPrice)} (${profitStr})\n`;
-            message += `Stop: ${distanceToStop}% | Alvo: ${distanceToTarget}% | Fecha: ${45 - ageMinutes}min\n\n`;
+            const minsToMaxClose = Math.max(0, SIGNAL_FORCE_CLOSE_MAX_AGE_MIN - ageMinutes);
+            message += `Stop: ${distanceToStop}% | Alvo: ${distanceToTarget}% | Fecha máx: ${minsToMaxClose}min\n\n`;
         }
 
         message += `━━━━━━━━━━━━━━━━━━━`;
@@ -1014,7 +1107,8 @@ export class TrendingScanner {
         result: string,
         exitPrice: number,
         profitPercent: number,
-        ageMinutes: number
+        ageMinutes: number,
+        timeoutTag: 'TIMEOUT' | 'TIMEOUT_MAX_AGE' = 'TIMEOUT'
     ): Promise<void> {
         const symbol = signal.symbol.replace("USDT", "");
         const profitStr = profitPercent >= 0 ? `+${profitPercent.toFixed(2)}%` : `${profitPercent.toFixed(2)}%`;
@@ -1026,7 +1120,7 @@ export class TrendingScanner {
             ? `\n🗓️ Desde: ${new Date(stats.baseline_at).toLocaleString('pt-BR')} (${stats.strategy_version})`
             : `\n🏷️ Estratégia: ${stats.strategy_version}`;
 
-        const message = `${emoji} *#${signal.id} ${symbol}* - *${result}* (TIMEOUT)
+        const message = `${emoji} *#${signal.id} ${symbol}* - *${result}* (${timeoutTag})
 
 Entry: ${formatPrice(signal.entry_price)} → Exit: ${formatPrice(exitPrice)}
 Resultado: ${profitStr} em ${ageMinutes}min
@@ -1114,7 +1208,7 @@ ${baselineInfo}
                 stopPercent,
                 targetPercent,
                 s.direction,
-                'TAKER',
+                DEFAULT_ORDER_TYPE,
                 fundingRate
             );
 

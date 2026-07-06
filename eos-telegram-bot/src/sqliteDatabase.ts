@@ -8,6 +8,10 @@ const db = new Database(path.resolve(DB_PATH));
 
 // Enable WAL mode for better performance
 db.pragma('journal_mode = WAL');
+// ponytail: checkpoint mais proativo (default do SQLite é 1000 páginas) + teto de 8MB no WAL,
+// só como blindagem preventiva contra crescimento sem controle quando o volume de trades subir
+db.pragma('wal_autocheckpoint = 400');
+db.pragma('journal_size_limit = 8388608');
 
 // ========== TYPES ==========
 
@@ -600,7 +604,18 @@ export const sqliteDatabase = {
     },
 
     // Validate signal (WIN/LOSS based on stop/target)
-    validateSignal(id: number, currentPrice: number): { result: 'WIN' | 'LOSS' | 'PENDING'; profitPercent: number } {
+    validateSignal(
+        id: number,
+        currentPrice: number,
+        macroData?: {
+            macro_confidence?: number;
+            macro_sentiment?: string;
+            fear_greed?: number;
+            trade_recommendation?: string;
+            sp500_trend?: string;
+            fed_stance?: string;
+        }
+    ): { result: 'WIN' | 'LOSS' | 'PENDING'; profitPercent: number } {
         const signal = this.getSignal(id);
         if (!signal || signal.result !== 'PENDING') {
             return { result: 'PENDING', profitPercent: 0 };
@@ -628,7 +643,7 @@ export const sqliteDatabase = {
         }
 
         if (result !== 'PENDING') {
-            this.closeSignal(id, currentPrice, result, profitPercent);
+            this.closeSignal(id, currentPrice, result, profitPercent, macroData);
         }
 
         return { result, profitPercent };
@@ -705,6 +720,16 @@ export const sqliteDatabase = {
     },
 
     // Get statistics for active strategy with optional baseline reset window
+    // Total de trades fechados (WIN+LOSS) sem filtro de baseline/fase — usado pelo bootstrap
+    // mode do filtro hora/direção (ver HOUR_DIRECTION_BOOTSTRAP_TOTAL_TRADES em trendingScanner.ts)
+    getTotalClosedTrades(): number {
+        const strategyVersion = this.getActiveStrategyVersion();
+        const row = db.prepare(
+            "SELECT COUNT(*) as count FROM signals WHERE result IN ('WIN','LOSS') AND strategy_version = ?"
+        ).get(strategyVersion) as { count: number };
+        return row.count;
+    },
+
     getStats(): {
         phase_tag: string;
         strategy_version: string;
@@ -715,6 +740,10 @@ export const sqliteDatabase = {
         losses: number;
         win_rate: number;
         avg_profit: number;
+        all_time_signals: number;
+        all_time_wins: number;
+        all_time_losses: number;
+        all_time_win_rate: number;
     } {
         const strategyVersion = this.getActiveStrategyVersion();
         const phaseTag = this.getStatsPhaseTag();
@@ -769,6 +798,13 @@ export const sqliteDatabase = {
         const totalClosed = wins.count + losses.count;
         const winRate = totalClosed > 0 ? (wins.count / totalClosed) * 100 : 0;
 
+        // All-time (sem filtro de baseline/fase) — transparência: reset de fase nunca esconde o histórico real
+        const allTimeSignals = db.prepare('SELECT COUNT(*) as count FROM signals WHERE strategy_version = ?').get(strategyVersion) as { count: number };
+        const allTimeWins = db.prepare("SELECT COUNT(*) as count FROM signals WHERE result = 'WIN' AND strategy_version = ?").get(strategyVersion) as { count: number };
+        const allTimeLosses = db.prepare("SELECT COUNT(*) as count FROM signals WHERE result = 'LOSS' AND strategy_version = ?").get(strategyVersion) as { count: number };
+        const allTimeClosed = allTimeWins.count + allTimeLosses.count;
+        const allTimeWinRate = allTimeClosed > 0 ? (allTimeWins.count / allTimeClosed) * 100 : 0;
+
         return {
             phase_tag: phaseTag,
             strategy_version: strategyVersion,
@@ -778,7 +814,11 @@ export const sqliteDatabase = {
             wins: wins.count,
             losses: losses.count,
             win_rate: winRate,
-            avg_profit: avgProfit.avg ?? 0
+            avg_profit: avgProfit.avg ?? 0,
+            all_time_signals: allTimeSignals.count,
+            all_time_wins: allTimeWins.count,
+            all_time_losses: allTimeLosses.count,
+            all_time_win_rate: allTimeWinRate
         };
     },
 

@@ -79,13 +79,12 @@ app.get("/health", async (_req: Request, res: Response) => {
 // Public stats snapshot for dashboard integrations
 app.get("/api/stats", (req: Request, res: Response) => {
     const stats = sqliteDatabase.getStats();
-    const { phase_tag, ...publicStats } = stats;
     const minTradesRaw = Number(req.query.minTrades);
     const minTrades = Number.isFinite(minTradesRaw) && minTradesRaw > 0 ? Math.floor(minTradesRaw) : 80;
     const edgeMatrix = sqliteDatabase.getEdgeMatrix(minTrades);
     res.json({
         success: true,
-        ...publicStats,
+        ...stats,
         edge: {
             min_trades: minTrades,
             cells: edgeMatrix
@@ -103,12 +102,11 @@ app.post("/api/stats/reset", authMiddleware, (req: Request, res: Response) => {
             : sqliteDatabase.resetStatsBaselineNow(phaseTag);
 
         const stats = sqliteDatabase.getStats();
-        const { phase_tag, ...publicStats } = stats;
         res.json({
             success: true,
             message: "Stats baseline updated",
             baselineAt,
-            stats: publicStats
+            stats
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to reset stats baseline";
