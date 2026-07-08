@@ -8,15 +8,25 @@ scikit-learn>=1.3.0
 pandas>=2.0.0
 numpy>=1.24.0
 
-# Database (já incluso no projeto principal)
-# better-sqlite3 é Node.js, usar sqlite3 para Python
+# Database
+# better-sqlite3 e Node.js, usar sqlite3 para Python
 
-# Opcional - visualização e análise
+# Visualizacao e analise
 matplotlib>=3.7.0
 seaborn>=0.12.0
 
-# Serialização de modelos
-# pickle é builtin, não precisa instalar
+# Serializacao de modelos
+# pickle e builtin, nao precisa instalar
 
 # Image generation
 httpx>=0.25.0
+
+# Reinforcement Learning
+gymnasium>=0.29.0
+stable-baselines3>=2.0.0
+torch>=2.0.0
+onnx>=1.14.0
+onnxruntime>=1.15.0
+
+# Binance API
+python-binance>=1.0.19
