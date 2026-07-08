@@ -43,10 +43,6 @@ const RISK_TARGET_MIN_PERCENT = envNumber('RISK_TARGET_MIN_PERCENT', 0.35);
 const RISK_TARGET_MAX_PERCENT = envNumber('RISK_TARGET_MAX_PERCENT', 0.90);
 const RISK_TARGET_STOP_RATIO = envNumber('RISK_TARGET_STOP_RATIO', 0.80);
 const RISK_VOL_TO_STOP_MULTIPLIER = envNumber('RISK_VOL_TO_STOP_MULTIPLIER', 0.70);
-// Ordem padrão sugerida ao usuário (afeta a taxa assumida no cálculo de posição e no texto do sinal).
-// Trocado de TAKER para MAKER em 2026-07-06: validação com dado real mostrou que o filtro combinado
-// (ver VALIDATED_SUBSET_* abaixo) só escapa da ruína com taxa maker — ver docs/ALGORITHM_TCC.md.
-const DEFAULT_ORDER_TYPE: 'MAKER' | 'TAKER' = (process.env.DEFAULT_ORDER_TYPE || 'MAKER').toUpperCase() === 'TAKER' ? 'TAKER' : 'MAKER';
 const ENABLE_HOUR_DIRECTION_FILTER = envBool('ENABLE_HOUR_DIRECTION_FILTER', true);
 const HOUR_DIRECTION_MIN_TRADES = envNumber('HOUR_DIRECTION_MIN_TRADES', 80);
 const HOUR_DIRECTION_MIN_WINRATE = envNumber('HOUR_DIRECTION_MIN_WINRATE', 52);
@@ -82,23 +78,6 @@ const CONTEXT_FILTER_CONTEXT_SCORE_BONUS = envNumber('CONTEXT_FILTER_CONTEXT_SCO
 // comparar contra o edge matrix (Wilson CI95) e remover/relaxar entradas que não se sustentam nos dados.
 const BLOCKED_SYMBOLS = new Set(
     envList('BLOCKED_SYMBOLS', ['SUIUSDT', 'TAOUSDT', 'BNBUSDT', 'ADAUSDT']).map(s => s.toUpperCase())
-);
-// Filtro de recorte validado por walk-forward (treino 06/fev–09/mar/2026, teste 09/mar–06/jul/2026,
-// dado real de produção). Só symbol × dia-da-semana × hora-direção que mostraram profit factor > 1
-// EM AMBAS as janelas (não só na amostra cheia) entram aqui — ver docs/ALGORITHM_TCC.md § Validated
-// Subset Filter para a metodologia completa e os números. Sem isso, a simulação com risco real (2%
-// por trade) + taxa mostrou ruína total (-100%) mesmo com profit factor bruto de 1,11.
-// Upgrade: reavaliar trimestralmente com o dado novo acumulado desde a última validação.
-const ENABLE_VALIDATED_SUBSET_FILTER = envBool('ENABLE_VALIDATED_SUBSET_FILTER', true);
-const VALIDATED_SUBSET_SYMBOLS = new Set(
-    envList('VALIDATED_SUBSET_SYMBOLS', ['BTCUSDT', 'ZECUSDT', 'ETHUSDT', 'XRPUSDT', 'DOGEUSDT', 'PEPEUSDT']).map(s => s.toUpperCase())
-);
-const VALIDATED_SUBSET_DAYS_UTC = new Set(
-    // 0=domingo, 1=segunda, ..., 3=quarta, 5=sexta, 6=sábado (UTC)
-    envList('VALIDATED_SUBSET_DAYS_UTC', ['3', '5', '6']).map(v => Number(v))
-);
-const VALIDATED_SUBSET_HOUR_ACTION_CELLS = new Set(
-    envList('VALIDATED_SUBSET_HOUR_ACTION_CELLS', ['12:SELL', '7:BUY', '9:SELL', '8:BUY'])
 );
 const BLOCKED_HOURS_UTC = new Set(
     envList('BLOCKED_HOURS_UTC', ['1', '2', '3', '14', '22', '23'])
@@ -520,7 +499,6 @@ export class TrendingScanner {
     private async analyzeAll(): Promise<OFASignal[]> {
         const validSignals: OFASignal[] = [];
         const hourUtc = new Date().getUTCHours();
-        const dowUtc = new Date().getUTCDay();
         if (BLOCKED_HOURS_UTC.has(hourUtc)) {
             console.log(`[TimingFilter] Hora ${hourUtc} UTC bloqueada por configuração (BLOCKED_HOURS_UTC).`);
             return validSignals;
@@ -554,17 +532,6 @@ export class TrendingScanner {
 
             if (signal && signal.score >= MIN_SCORE) {
                 const action = signal.direction === "LONG" ? "BUY" : "SELL";
-
-                if (ENABLE_VALIDATED_SUBSET_FILTER) {
-                    const symbolOk = VALIDATED_SUBSET_SYMBOLS.has(signal.symbol.toUpperCase());
-                    const dayOk = VALIDATED_SUBSET_DAYS_UTC.has(dowUtc);
-                    const cellOk = VALIDATED_SUBSET_HOUR_ACTION_CELLS.has(`${hourUtc}:${action}`);
-                    if (!symbolOk || !dayOk || !cellOk) {
-                        console.log(`[ValidatedSubset] ${signal.symbol} ${action} REJEITADO - fora do recorte validado (symbol=${symbolOk}, dia=${dayOk}, hora×direção=${cellOk})`);
-                        continue;
-                    }
-                }
-
                 if (ENABLE_HOUR_DIRECTION_FILTER) {
                     const totalClosedTrades = sqliteDatabase.getTotalClosedTrades();
                     if (totalClosedTrades < HOUR_DIRECTION_BOOTSTRAP_TOTAL_TRADES) {
@@ -1132,7 +1099,7 @@ Resultado: ${profitStr} em ${ageMinutes}min
 ${baselineInfo}
 ━━━━━━━━━━━━━━━━━━━`;
 
-        await telegram.sendBreakoutAlert(message);
+        await telegram.sendBreakoutAlert(message, signal.symbol, signal.action, 75, "O Olho ve tudo.");
         console.log(`[TrendingScanner] Timeout ${result} for #${signal.id} after ${ageMinutes}min`);
     }
 
@@ -1179,7 +1146,7 @@ Resultado: ${profitStr}
 ${baselineInfo}
 ━━━━━━━━━━━━━━━━━━━`;
 
-        await telegram.sendBreakoutAlert(message);
+        await telegram.sendBreakoutAlert(message, signal.symbol, signal.action, 75, "O Olho ve tudo.");
         console.log(`[TrendingScanner] Sent ${result} for #${signal.id} | WinRate: ${winRate}%`);
     }
 
@@ -1208,7 +1175,7 @@ ${baselineInfo}
                 stopPercent,
                 targetPercent,
                 s.direction,
-                DEFAULT_ORDER_TYPE,
+                'TAKER',
                 fundingRate
             );
 
@@ -1234,7 +1201,9 @@ ${baselineInfo}
 
         message += `_${quote}_`;
 
-        await telegram.sendBreakoutAlert(message);
+        const primarySignal = signals[0];
+        const primaryDirection = primarySignal.direction === "LONG" ? "BUY" : "SELL";
+        await telegram.sendBreakoutAlert(message, primarySignal.symbol, primaryDirection, primarySignal.score, quote);
         console.log(`[TrendingScanner] Enviados ${signals.length} sinais consolidados`);
     }
 }

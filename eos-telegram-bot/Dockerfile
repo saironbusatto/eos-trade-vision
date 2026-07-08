@@ -19,6 +19,7 @@ RUN pip3 install --break-system-packages --no-cache-dir -r ./ml/requirements.txt
 
 # Copiar código compilado
 COPY dist/ ./dist/
+COPY scripts/ ./scripts/
 COPY ml/ ./ml/
 
 # Dados serão montados via volume

@@ -17,3 +17,6 @@ seaborn>=0.12.0
 
 # Serialização de modelos
 # pickle é builtin, não precisa instalar
+
+# Image generation
+httpx>=0.25.0
