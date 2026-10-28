@@ -1,3 +1,5 @@
+**English** · [Português (BR)](README.pt-BR.md)
+
 # EOS Trade Vision
 
 Algorithmic trading system with Order Flow Analysis (OFA) + ML for crypto, with execution and monitoring on AWS.
