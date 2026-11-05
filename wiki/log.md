@@ -25,3 +25,6 @@
 ## [2026-11-04] lint | 1 issue found (wikilinks unresolved in Obsidian: title ≠ filename), 1 auto-fixed via aliases
 
 ## [2026-11-04] update | Project State and Open Items (pending work committed)
+
+## [2026-11-04] ingest | NCM Next-Concept Modeling
+- Updated: Project State and Open Items

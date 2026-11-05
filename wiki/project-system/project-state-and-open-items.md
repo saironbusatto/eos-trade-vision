@@ -24,7 +24,7 @@ updated: 2026-11-04
 | 2026-07-06 | EC2 → Oracle migration; [[Validated Subset Filter]]; MAKER default; `/api/stats` phase fields |
 | 2026-07-08 | [[Sauron Image Generation]]; gateway healthcheck fix; [[RL PPO Trading Module]] (**last commit**) |
 | 2026-07-23 | Folder copied to current machine (all mtimes reset) |
-| 2026-11-04 | Project resumed; wiki refreshed |
+| 2026-11-04 | Project resumed; wiki refreshed; Oracle VM lost (disk `farmei-prod` kept, no capacity to relaunch) → runs on local PC; plan: rebase ML on [[NCM Next-Concept Modeling]] |
 
 ## Formerly uncommitted work (committed 2026-11-04 on `chore/resume-nov-2026`)
 
