@@ -26,9 +26,9 @@ updated: 2026-11-04
 | 2026-07-23 | Folder copied to current machine (all mtimes reset) |
 | 2026-11-04 | Project resumed; wiki refreshed |
 
-## Uncommitted work (pending decision)
+## Formerly uncommitted work (committed 2026-11-04 on `chore/resume-nov-2026`)
 
-18 files with real changes, never committed (~390 others only show file-mode diffs — run `git config core.fileMode false`):
+Committed in 4 commits (339e6ea, a61d7db, ebd33bf, 020eff8); `core.fileMode=false` set. Not pushed yet.
 
 - **`eos-telegram-bot/src/macroAnalyzer.ts`** — heuristic macro (Binance 24h public data) replacing Perplexity.
 - Docs: April production addendum, infra notes, ML feature table, env examples (exit engine vars, blacklists).
@@ -37,11 +37,11 @@ updated: 2026-11-04
 - Untracked: `wiki/`, `raw/`, `lint-health-plan.md`.
 
 > [!warning] Conflict
-> The docs say the heuristic macro was *implanted* in April, but the code change is **only in the working tree**. The last commits on `main` (July) still contain the Perplexity analyzer — unless production runs from a different copy. Verify what is actually deployed on the Oracle VPS.
+> The docs say the heuristic macro was *implanted* in April, but the code only reached git on 2026-11-04. The last commits on `main` (July) still contain the Perplexity analyzer — unless production runs from a different copy. Verify what is actually deployed on the Oracle VPS.
 
 ## Open items
 
-1. Decide on and commit (or discard) the 18 pending files.
+1. Push `chore/resume-nov-2026` and merge into `main` (not pushed yet).
 2. Confirm live infra (Oracle) and update `docs/INFRASTRUCTURE.md` + deploy workflows still pointing at EC2.
 3. **Quarterly re-validation of the [[Validated Subset Filter]] is overdue** (last: 2026-07-06).
 4. Check paper-trading results since July before trusting the n=136 result.
