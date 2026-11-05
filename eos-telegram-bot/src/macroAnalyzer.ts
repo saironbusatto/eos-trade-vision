@@ -1,6 +1,6 @@
 /**
- * Macro Sentiment Analyzer using Perplexity API
- * Fetches macro + crypto sentiment and returns structured JSON
+ * Macro Sentiment Analyzer (heuristic, no paid external provider)
+ * Uses public market data + deterministic rules to produce stable macro context.
  */
 
 export interface MacroAnalysis {
@@ -25,7 +25,7 @@ export interface MacroAnalysis {
     timestamp: string;
 }
 
-// Default neutral analysis when API fails
+// Default neutral analysis when external data is unavailable
 const DEFAULT_ANALYSIS: MacroAnalysis = {
     macro: {
         sp500_trend: 'NEUTRAL',
@@ -44,7 +44,7 @@ const DEFAULT_ANALYSIS: MacroAnalysis = {
         trade_recommendation: 'NORMAL'
     },
     key_events: [],
-    warnings: ['Using default values - API unavailable'],
+    warnings: ['Using default values - market snapshot unavailable'],
     timestamp: new Date().toISOString()
 };
 
@@ -79,32 +79,84 @@ function shouldRefreshMacro(): boolean {
     return false;
 }
 
-const PERPLEXITY_API_KEY = process.env.PERPLEXITY_API_KEY;
-
-const PROMPT = `You are a financial analyst AI. Analyze the current macro and crypto market conditions and respond ONLY with valid JSON in this exact format:
-
-{
-  "macro": {
-    "sp500_trend": "BULLISH" | "NEUTRAL" | "BEARISH",
-    "fed_stance": "HAWKISH" | "NEUTRAL" | "DOVISH",
-    "dxy_trend": "UP" | "STABLE" | "DOWN",
-    "risk_sentiment": "RISK_ON" | "NEUTRAL" | "RISK_OFF"
-  },
-  "crypto": {
-    "btc_sentiment": "BULLISH" | "NEUTRAL" | "BEARISH",
-    "altcoin_sentiment": "BULLISH" | "NEUTRAL" | "BEARISH",
-    "fear_greed": 0-100
-  },
-  "overall": {
-    "sentiment": "BULLISH" | "NEUTRAL" | "BEARISH",
-    "confidence": 0.0-1.0,
-    "trade_recommendation": "AGGRESSIVE" | "NORMAL" | "CONSERVATIVE" | "AVOID"
-  },
-  "key_events": ["event1", "event2"],
-  "warnings": ["warning1"]
+function clamp(value: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, value));
 }
 
-Respond with ONLY the JSON, no explanation or markdown.`;
+async function fetch24hChange(symbol: string): Promise<number | null> {
+    try {
+        const res = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`);
+        if (!res.ok) return null;
+        const data = await res.json() as { priceChangePercent?: string };
+        const change = Number(data.priceChangePercent);
+        return Number.isFinite(change) ? change : null;
+    } catch {
+        return null;
+    }
+}
+
+function getSentimentFromChange(changePct: number): 'BULLISH' | 'NEUTRAL' | 'BEARISH' {
+    if (changePct >= 1.25) return 'BULLISH';
+    if (changePct <= -1.25) return 'BEARISH';
+    return 'NEUTRAL';
+}
+
+function getRecommendation(
+    sentiment: 'BULLISH' | 'NEUTRAL' | 'BEARISH',
+    confidence: number,
+    riskSentiment: 'RISK_ON' | 'NEUTRAL' | 'RISK_OFF'
+): 'AGGRESSIVE' | 'NORMAL' | 'CONSERVATIVE' | 'AVOID' {
+    if (sentiment === 'BEARISH' && confidence >= 0.62) return 'AVOID';
+    if (sentiment === 'BULLISH' && confidence >= 0.72 && riskSentiment === 'RISK_ON') return 'AGGRESSIVE';
+    if (sentiment === 'BULLISH' && confidence >= 0.58) return 'NORMAL';
+    return 'CONSERVATIVE';
+}
+
+async function buildHeuristicAnalysis(): Promise<MacroAnalysis> {
+    const [btcChange, ethChange] = await Promise.all([
+        fetch24hChange('BTCUSDT'),
+        fetch24hChange('ETHUSDT')
+    ]);
+
+    if (btcChange == null || ethChange == null) {
+        return { ...DEFAULT_ANALYSIS, timestamp: new Date().toISOString() };
+    }
+
+    const avgChange = (btcChange + ethChange) / 2;
+    const btcSentiment = getSentimentFromChange(btcChange);
+    const altcoinSentiment = getSentimentFromChange(ethChange);
+    const overallSentiment = getSentimentFromChange(avgChange);
+
+    const riskSentiment: 'RISK_ON' | 'NEUTRAL' | 'RISK_OFF' =
+        avgChange >= 1 ? 'RISK_ON' : avgChange <= -1 ? 'RISK_OFF' : 'NEUTRAL';
+
+    const confidence = clamp(0.45 + Math.abs(avgChange) / 8, 0.45, 0.82);
+    const fearGreed = Math.round(clamp(50 + avgChange * 7, 5, 95));
+
+    const analysis: MacroAnalysis = {
+        macro: {
+            sp500_trend: overallSentiment,
+            fed_stance: overallSentiment === 'BEARISH' ? 'HAWKISH' : overallSentiment === 'BULLISH' ? 'DOVISH' : 'NEUTRAL',
+            dxy_trend: overallSentiment === 'BEARISH' ? 'UP' : overallSentiment === 'BULLISH' ? 'DOWN' : 'STABLE',
+            risk_sentiment: riskSentiment
+        },
+        crypto: {
+            btc_sentiment: btcSentiment,
+            altcoin_sentiment: altcoinSentiment,
+            fear_greed: fearGreed
+        },
+        overall: {
+            sentiment: overallSentiment,
+            confidence,
+            trade_recommendation: getRecommendation(overallSentiment, confidence, riskSentiment)
+        },
+        key_events: [],
+        warnings: ['Heuristic macro mode active (Perplexity disabled)'],
+        timestamp: new Date().toISOString()
+    };
+
+    return analysis;
+}
 
 export async function getMacroAnalysis(forceRefresh: boolean = false): Promise<MacroAnalysis> {
     // Check if we should refresh based on S&P 500 schedule
@@ -115,50 +167,9 @@ export async function getMacroAnalysis(forceRefresh: boolean = false): Promise<M
         }
     }
 
-    if (!PERPLEXITY_API_KEY) {
-        console.log('[MacroAnalyzer] No API key, using defaults');
-        return { ...DEFAULT_ANALYSIS, timestamp: new Date().toISOString() };
-    }
-
     try {
-        console.log('[MacroAnalyzer] Fetching fresh analysis from Perplexity...');
-
-        const response = await fetch('https://api.perplexity.ai/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model: 'llama-3.1-sonar-small-128k-online',
-                messages: [
-                    { role: 'user', content: PROMPT }
-                ],
-                max_tokens: 1000,
-                temperature: 0.1
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error(`Perplexity API error: ${response.status}`);
-        }
-
-        const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
-        const content = data.choices?.[0]?.message?.content || '';
-
-        // Extract JSON from response (may have extra text)
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-            throw new Error('No JSON found in response');
-        }
-
-        const parsed = JSON.parse(jsonMatch[0]) as Omit<MacroAnalysis, 'timestamp'>;
-
-        // Add timestamp and cache
-        const analysis: MacroAnalysis = {
-            ...parsed,
-            timestamp: new Date().toISOString()
-        };
+        console.log('[MacroAnalyzer] Fetching fresh heuristic macro snapshot...');
+        const analysis = await buildHeuristicAnalysis();
 
         cachedAnalysis = analysis;
         lastFetchHour = new Date().getUTCHours();
@@ -172,7 +183,7 @@ export async function getMacroAnalysis(forceRefresh: boolean = false): Promise<M
         return analysis;
 
     } catch (error) {
-        console.error('[MacroAnalyzer] Error fetching analysis:', error);
+        console.error('[MacroAnalyzer] Error generating macro analysis:', error);
         return { ...DEFAULT_ANALYSIS, timestamp: new Date().toISOString() };
     }
 }
