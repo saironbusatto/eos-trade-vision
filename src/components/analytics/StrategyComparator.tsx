@@ -45,7 +45,7 @@ export const StrategyComparator: React.FC<StrategyComparatorProps> = ({ signals 
         const sorted = [...signals].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
         // Tipagem explícita para evitar noImplicitAny
-        let cumulative: Record<string, number> = {};
+        const cumulative: Record<string, number> = {};
         strategies.forEach(s => cumulative[s] = 0);
 
         return sorted.map(signal => {
@@ -57,7 +57,7 @@ export const StrategyComparator: React.FC<StrategyComparatorProps> = ({ signals 
                 ...cumulative
             };
         });
-    }, [signals, strategies, selectedStrategies]);
+    }, [signals, strategies]);
 
     // Calcular stats por estratégia
     const stats = useMemo(() => {
