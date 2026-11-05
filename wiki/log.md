@@ -30,3 +30,5 @@
 - Updated: Project State and Open Items
 
 ## [2026-11-05] update | NCM Handoff 2026-11-05
+
+## [2026-11-05] update | Theory Retest BTC (task 6)
