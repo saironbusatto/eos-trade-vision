@@ -1,0 +1,27 @@
+# NCM ao vivo: entrada e saída decididas pelo modelo
+
+## Goal
+Um NCM que, a cada fechamento de candle de 1m em BTCUSDT (depois ETH), gera o plano dos próximos 45 min (entrar, lado, segurar, sair), treinado só com o que se sabia naquele instante e aprovado no walk-forward com taxa antes de rodar em paper trading ao vivo.
+
+## Tasks
+- [x] 1. **Dados brutos reproduzíveis:** (04/11: 4,8 GB, checksums ok, só 28/10 faltando na fonte) `ncm/dados_binance.py` baixa de data.binance.vision os klines 1m + aggTrades + funding de BTCUSDT **USDT-M Futures** (spot só como feature extra), fev–out/2026, em Parquet em `~/.local/share/eos-ncm/` → Verify: contagem de candles = minutos do período, sem buracos (o script imprime os buracos).
+- [ ] 2. **Relógio único sem futuro:** `ncm/replay.py` entrega a "foto" no instante t usando só eventos com `ts <= t` (OFA, volume profile e klines **fechados**; descarta 60 min de aquecimento após buracos); **uma só implementação em Python** do OFA, portada de `src/ofa/`, usada no replay e no ao vivo; normalização e baldes ajustados só no treino e congelados; sem macro Perplexity, Fear & Greed ou notícias → Verify: teste que embaralha os dados depois de t e confirma que a foto não muda; teste que compara a foto do replay com a do bot ao vivo no mesmo minuto.
+- [x] 3. **Gabarito honesto:** (04/11: `ncm/rotulos.py` com `ordem`, `posicoes` e `melhor_plano` (Viterbi); autoteste ok) `ncm/rotulos.py` simula cada plano candle a candle: entrada na abertura do candle seguinte + latência + slippage; maker só preenche se o preço atravessar o nível (senão perde o trade ou vira taker, os dois cenários reportados); stop/alvo no mesmo candle = pior caso; taxa e funding; resultado líquido → Verify: teste com um candle que toca stop e alvo; o PnL líquido de um trade conhecido bate com a conta à mão.
+- [ ] 4. **Corrigir as janelas do bot:** em `trendingScanner.ts`, decidir no fechamento do candle (stream `@kline_1m`/`@kline_15m`, `x=true`) em vez de `SCAN_INTERVAL` 10 min; ignorar o candle aberto; checar stop/alvo pelo stream em vez do `VALIDATION_INTERVAL` 5 min; WIN = PnL líquido > 0; tirar a imagem do Sauron do caminho do sinal → Verify: log mostra a decisão < 1 s depois do fechamento; teste de rótulo com taxa.
+- [ ] 5. **Split sem vazamento:** treino/validação fev–jun, **teste 07/jul–out** (depois de todas as teorias descobertas), embargo de 45 min; o teste é congelado e usado uma vez antes de qualquer ajuste e nunca é usado para escolher hiperparâmetro → Verify: script afirma que não há sobreposição de timestamps nem dentro do embargo.
+- [ ] 6. **Retestar as teorias já testadas no mesmo simulador** (regra fixa, sem NCM): hora×direção, subset validado de julho, `BLOCKED_HOURS/SYMBOLS`, super setup score ≥ 80, smart money, MAKER × TAKER, sem filtro → Verify: tabela em `wiki/` com n, PF, capital composto e DD; a coluna "sem filtro" tem que reproduzir a ruína de julho (sanidade do simulador).
+- [ ] 7. **Treinar o NCM:** portar `WoWcombabte/ml/tools/ncm_treino.py`; prefixo = foto (task 2); saída = 45 tokens de ação por minuto em níveis `[1,3,9,45]`; alvo = melhor plano líquido em retrospecto; peso = vantagem líquida × exclusividade (sem peso artificial por classe); limiar de entrada calibrado na validação; checar uso do codebook por nível → Verify: perda de validação cai; a reconstrução do tokenizador fica ≥ 99%.
+- [ ] 8. **Prova fora da amostra:** no teste congelado, NCM nos dois modos — consenso (MBR) de N amostras e determinístico (mais provável + limiar) — nenhum eliminado antes, contra as regras da task 6 e contra "nunca operar" → Verify: só passa com PF > 1,2 e capital composto > 0 com taxa, nas 3 partes do teste, em LONG e SHORT separados e acima do buy & hold; relatório traz nº de tentativas e Sharpe deflacionado; latência < 100 ms por decisão no RTX 5060.
+- [ ] 9. **Ao vivo em paper:** serviço Python lê o stream, chama o NCM no fechamento de cada candle e opera via `PaperTradingService`; registra a foto e a decisão de cada minuto (vira dado de treino ao vivo) → Verify: 4–6 semanas de paper com o mesmo critério da task 8.
+
+## Done When
+- [ ] O NCM bate as regras e "nunca operar" no teste congelado com taxa, e repete isso em paper ao vivo.
+
+## Notes
+- Dados (04/11): klines 1m de futuros completos fev–set; **28/10/2026 não existe no arquivo de futuros da Binance** (404 até no diário) → dia excluído + 60 min de aquecimento. Klines de spot vêm em **microssegundos**, os de futuros em ms. Disco com 16 GB livres: guardar só os zips verificados.
+- Auditoria de viés (04/11): ver tasks 1, 2, 3, 5, 7 e 8; execução maker otimista e spot×futuros são os riscos mais graves.
+- O banco antigo (`tmp/eos.prod.db`, 16.834 sinais de fev–mar) serve só para conferir as teorias, não como gabarito: os rótulos dele vêm de leitura a cada 5 min e WIN sem taxa.
+- "Sem viés" = a foto só vê o passado (task 2) e o teste nunca influencia o modelo (task 5). O gabarito olha o futuro por definição; isso é permitido.
+- Lição do WoW: imitar o melhor plano acertou 69% do foco, mas não ganhou mais lutas. O critério é PnL líquido, não acerto.
+- BTC primeiro (maior liquidez, menos ruído de spread); ETH entra repetindo as tasks 1, 6 e 8.
+- Execução real fica fora deste plano.
