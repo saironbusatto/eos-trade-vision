@@ -31,3 +31,6 @@ eos-ml/.venv/
 *.pem
 *.db
 eos-iq-bot/
+
+# Python bytecode
+__pycache__/

@@ -132,3 +132,17 @@ Ao modificar qualquer contrato global, siga este checklist:
 
 **Última atualização:** 02/04/2026
 **Mantedor:** @sairo (S-Iron.tech)
+
+---
+
+## Politica LLM-Wiki (Operacao)
+
+Para qualquer prompt operacional (implementacao, bugfix, refactor, documentacao e review):
+
+1. Consultar a base de conhecimento em `wiki/` antes de realizar mudancas.
+2. Ao final da interacao, executar ingest/update registrando:
+- o que mudou
+- por que mudou
+- evidencias de validacao (testes/checks)
+
+Se `raw/` e `wiki/` nao existirem, inicializar no primeiro ingest.

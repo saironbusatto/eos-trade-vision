@@ -26,6 +26,10 @@ Fluxo do hook:
 3. sobe/reinicia PM2 `eos-bot`;
 4. executa `scripts/deploy_post_cleanup.sh` se existir.
 
+Observação importante:
+- como o deploy usa `--omit=dev`, o servidor pode não ter `tsc`.
+- portanto, o artefato `dist/` precisa estar pronto (build gerado no CI ou no ambiente de build).
+
 ## 3) Diretórios de produção (padrão atual)
 
 O workflow suporta dois layouts por compatibilidade:
@@ -73,6 +77,14 @@ Resiliência do engine:
 - `ENGINE_TARGET_COVERAGE_SEC=3300`
 - `ENGINE_MAX_LAG_MS=8000`
 - `ENGINE_RECOVERY_LAG_MS=3000`
+
+Filtros de risco (fortemente recomendados):
+- `BLOCKED_HOURS_UTC=1,2,3,14,22,23`
+- `BLOCKED_SYMBOLS=SUIUSDT,TAOUSDT,BNBUSDT,ADAUSDT`
+
+Macro regime:
+- Perplexity foi removido do caminho crítico.
+- o bot usa macro heurístico local (dados públicos), mantendo preenchimento de features macro no `ml_training`.
 
 ## 7) Checklist pós-deploy (AWS)
 
