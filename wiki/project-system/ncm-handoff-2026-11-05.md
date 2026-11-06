@@ -7,7 +7,7 @@ tags:
   - ncm
   - handoff
 status: active
-updated: 2026-11-05
+updated: 2026-11-06
 ---
 
 # NCM Handoff 2026-11-05
@@ -24,15 +24,24 @@ Where the NCM rebase stopped on the night of 04→05/11/2026. The plan is `ncm-l
 | 4 | Fix bot windows (`trendingScanner.ts`) | not started; touches the live bot, wait for the user's ok |
 | 5 | Split (`ncm/split.py`) | done |
 | 6 | Theory retests (`ncm/teorias.py`) | done: all lose after fees, see [[Theory Retest BTC]] |
-| 7–9 | NCM training, out-of-sample proof, paper live | not started; next is 7 |
+| 7 | NCM training by net PnL (`ncm/treino.py`) | in progress: run 1 collapsed to "never trade"; signal check done, see below |
+| 8–9 | Out-of-sample proof, paper live | not started |
 
-## Running when the session ended
+## Task 7 state (06/11/2026)
 
-`ncm/replay.py --de 2026-02 --ate 2026-10` (BTCUSDT), about 4 h, sequential (only ~3 GB of free RAM; one month peaks ~2.8 GB).
-- Log: `~/.local/share/eos-ncm/logs/replay-btc.log` (one line per month with valid minutes and ms/min).
-- Output: `~/.local/share/eos-ncm/fotos/BTCUSDT-YYYY-MM.npz` with `t_ms`, `valido`, `preco`, `X` (float32, 205 features), `nomes`.
-- If the log doesn't reach `2026-10`, rerun with `--de <month that failed>`. The previous month's tail is only used for warm-up, so a restart loses ~25 h of valid minutes at the start of that month. Accept that, or start one month earlier.
-- When it finishes, mark task 2 `[x]` in the plan.
+- Task 7 was rewritten at the user's request: train **by money**, not by imitating the hindsight plan. The bot executes the plan's first run (enter, hold while the plan keeps the side, exit at the first change). Reward = log of capital after that trade (`rotulos.primeira_operacao` + `recompensa_lote`). Stages: VQ-VAE tokenizer, short imitation warm-up, GRPO. Checkpoint and threshold picked by June simulated like live.
+- Run 1 (`~/.local/share/eos-ncm/modelo/`, log `logs/treino-btc.log`, ~1h45 on the RTX 5060):
+  - tokenizer reached 100% reconstruction;
+  - GRPO stopped trading by step 200 of 8000. When all K samples are flat, the advantage is 0 and there is no gradient. Method failure, not evidence.
+  - The saved `gerador.pt` is the step-0 warm-up model; it is worthless.
+- Photo prefix compressed to 16 tokens (one token per feature was ~10x slower).
+- `ncm/sinal.py` asked whether there is money in the photos at all. See [[Signal Check BTC]].
+  - The MLP overfits.
+  - Ridge shows a weak long-only contrarian edge in June: 15 trades at the 0.10% threshold, PF 6.5. Not proven.
+- Versions seen in June so far: 180. These count toward the task 8 deflated Sharpe.
+- **Waiting for the user's ok** on two things:
+  1. freeze the ridge rule (0.10% threshold) as a task 8 candidate;
+  2. NCM run 2 with exploration fixed (KL to the warm-up model, a minimum share of sampled entries).
 
 ## How to run
 
@@ -66,10 +75,15 @@ Raw data in `~/.local/share/eos-ncm/raw/` (~4.8 GB, outside the repo).
 - BTC first, then ETH. No Perplexity macro, Fear & Greed or news.
 - Runs on the user's PC; there's no money for hosting. Oracle has been given up (the `farmei-prod` disk is kept).
 
+- `split.py`: train fev–mai, validation jun, frozen test 07/jul–out in thirds; `abre_teste` opens once per symbol.
+- `teorias.py`: task 6 rule retest.
+- `treino.py`: NCM training by net PnL (`--rapido` = quick pass to measure time).
+- `sinal.py`: ridge/MLP signal check.
+
 ## Next step
 
-1. Check that the replay finished (log) and mark task 2.
-2. Task 5 (split fev–jun / test 07/jul–out, 45 min embargo) and task 6 (retest the theories in the simulator; the "sem filtro" column has to reproduce the July ruin).
+1. After the user's ok: freeze the ridge candidate, then NCM run 2 with the exploration fix.
+2. Task 8 only after the candidates are frozen; `split.abre_teste` opens the test once.
 3. Task 4 only with the user's ok.
 
 ## Loose ends
