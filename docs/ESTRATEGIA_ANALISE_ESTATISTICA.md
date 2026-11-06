@@ -6,6 +6,57 @@
 
 ---
 
+## Adendo de Produção — 12/04/2026
+
+Após este relatório inicial, foi feita nova leitura diretamente no servidor de produção (EC2), com dataset atualizado:
+
+- `signals`: 17.634
+- `ml_training`: 17.629
+- baseline global: `WR = 49,02%`, `avg_final_profit = +0,0086`
+
+### Diagnóstico adicional crítico
+
+Coorte por preenchimento de macro:
+
+- `with_macro`: 14.737 trades, `WR = 53,23%`, `avg_final_profit = +0,0873`
+- `no_macro`: 2.892 trades, `WR = 27,56%`, `avg_final_profit = -0,3927`
+
+Interpretação:
+- a presença de `no_macro` era um destruidor de expectativa, com impacto desproporcional negativo.
+- raiz operacional identificada: falha de cota no provedor externo anterior (Perplexity `401 insufficient_quota`).
+
+### Simulação de filtros (produção real)
+
+| Cenário | Trades | WR | Avg Profit |
+|--------|--------|----|------------|
+| baseline | 17.629 | 49,02% | +0,0086 |
+| exclude_no_macro | 14.737 | 53,23% | +0,0873 |
+| only_profitable_hours | 7.263 | 52,66% | +0,0778 |
+| exclude_worst_hours | 13.786 | 50,37% | +0,0329 |
+| exclude_bad_symbols | 13.568 | 49,68% | +0,0184 |
+| macro + good_hours + drop_bad_symbols | 4.601 | 57,27% | +0,1510 |
+
+### Decisões implantadas
+
+1. remoção da dependência crítica de macro externo pago;
+2. macro heurístico determinístico com dados públicos;
+3. blacklist hard por hora (`BLOCKED_HOURS_UTC`);
+4. blacklist hard por símbolo (`BLOCKED_SYMBOLS`);
+5. garantia de persistência de macro em todo fechamento de sinal.
+
+### Justificativa metodológica
+
+A estratégia foi deliberadamente movida de “maximizar volume de sinais” para “maximizar expectativa condicional”.
+
+Formalmente:
+
+- anterior: `max N_trades`
+- atual: `max E[profit | contexto válido]`, sujeito a cobertura mínima operacional
+
+Esse shift aumenta robustez para compounding de longo prazo, mesmo com menor frequência.
+
+---
+
 ## 1. Contexto e Motivação
 
 Este documento registra a investigação empírica conduzida sobre o histórico de sinais do sistema EOS, com o objetivo de identificar **padrões estatisticamente válidos** que sustentem decisões de calibragem do sistema de filtragem (TimingFilter) e embasem a evolução da estratégia de trading.
@@ -155,7 +206,7 @@ A maior descoberta da análise: a combinação de **hora do dia + contexto VP + 
 
 ---
 
-### 4.3 O Super Setup — Score OFA ≥ 80 + Hora Ouro + SM confirmado
+### 4.3 O Super Setup — Scoredmnro OFA ≥ 80 + Hora Ouro + SM confirmado
 
 Quando os três critérios se alinham, o sistema atinge seu máximo desempenho histórico:
 

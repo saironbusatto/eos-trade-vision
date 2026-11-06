@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { BotTabs } from "@/components/analytics/BotTabs";
@@ -11,10 +11,46 @@ import { OrderBookWidget } from "@/components/OrderBookWidget";
 // Configuração da API
 const gatewayApiUrl = import.meta.env.VITE_GATEWAY_API_URL || 'https://eos.s-iron.tech';
 
+interface AnalyticsSignal {
+    id: number;
+    type: 'forex' | 'crypto';
+    strategy: string;
+    result: 'WIN' | 'LOSS';
+    timestamp: string;
+}
+
+interface StrategyStatsEntry {
+    wins: number;
+    losses: number;
+    total: number;
+    winRate: number;
+}
+
+interface EdgeCell {
+    hour_utc: number;
+    action: 'BUY' | 'SELL';
+    trades: number;
+    win_rate: number;
+    expectancy_ci95_low: number;
+}
+
+interface AnalyticsData {
+    signals?: AnalyticsSignal[];
+    filters?: {
+        strategies?: string[];
+        timeframes?: number[];
+    };
+    edgeStats?: {
+        cells?: EdgeCell[];
+        min_trades?: number;
+    };
+    strategyStats?: Record<string, StrategyStatsEntry>;
+}
+
 export default function Analytics() {
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'general' | 'forex' | 'crypto'>('general');
-    const [analyticsData, setAnalyticsData] = useState<any>(null);
+    const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
     const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
     // Filtros
@@ -23,7 +59,7 @@ export default function Analytics() {
     const [availableStrategies, setAvailableStrategies] = useState<string[]>([]);
     const [availableTimeframes, setAvailableTimeframes] = useState<number[]>([]);
 
-    const fetchAnalytics = async () => {
+    const fetchAnalytics = useCallback(async () => {
         setLoading(true);
         try {
             // Monta query params
@@ -49,20 +85,20 @@ export default function Analytics() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [activeTab, selectedStrategy, selectedTimeframe]);
 
     useEffect(() => {
         fetchAnalytics();
         const interval = setInterval(fetchAnalytics, 30000);
         return () => clearInterval(interval);
-    }, [activeTab, selectedStrategy, selectedTimeframe]);
+    }, [fetchAnalytics]);
 
-    const filterSignals = () => {
+    const filterSignals = (): AnalyticsSignal[] => {
         if (!analyticsData?.signals) return [];
         return analyticsData.signals;
     };
 
-    const edgeCells: any[] = analyticsData?.edgeStats?.cells || [];
+    const edgeCells: EdgeCell[] = analyticsData?.edgeStats?.cells || [];
     const bestEdges = [...edgeCells]
         .sort((a, b) => (b.expectancy_ci95_low || 0) - (a.expectancy_ci95_low || 0))
         .slice(0, 8);
@@ -176,7 +212,7 @@ export default function Analytics() {
                                     <span className="text-amber-400">📊</span> Performance por Estratégia
                                 </h3>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {Object.entries(analyticsData.strategyStats).map(([name, stats]: [string, any]) => (
+                                    {Object.entries(analyticsData.strategyStats).map(([name, stats]) => (
                                         <div key={name} className="bg-slate-900/50 p-4 rounded-lg border border-slate-700/50">
                                             <div className="flex justify-between items-center mb-2">
                                                 <span className="font-bold text-white">{name}</span>

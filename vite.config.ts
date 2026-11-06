@@ -14,4 +14,18 @@ export default defineConfig(() => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+          if (id.includes("recharts")) return "vendor-charts";
+          if (id.includes("@radix-ui")) return "vendor-radix";
+          if (id.includes("react-router-dom")) return "vendor-router";
+          if (id.includes("@tanstack/react-query")) return "vendor-query";
+          return "vendor";
+        },
+      },
+    },
+  },
 }));

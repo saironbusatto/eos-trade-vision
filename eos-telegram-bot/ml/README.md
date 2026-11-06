@@ -92,7 +92,7 @@ ML_RECALIBRATION_MAX_F1_DROP=0.03
 
 | Feature | Tipo | Range |
 |---------|------|-------|
-| f_smart_money | Contínua | 0-1 |
+| f_smart_money | Categórica numérica | -1, 0, 1 |
 | f_trend | Contínua | -1 a 1 |
 | f_momentum | Contínua | -1 a 1 |
 | f_volume | Contínua | 0-1 |
@@ -101,6 +101,17 @@ ML_RECALIBRATION_MAX_F1_DROP=0.03
 | score | Discreta | 0-100 |
 | hour_sin/cos | Cíclica | -1 a 1 |
 | dow_sin/cos | Cíclica | -1 a 1 |
+| macro_confidence | Contínua | 0-1 |
+| fear_greed | Inteira | 0-100 |
+| macro_sentiment_encoded | Categórica codificada | -1,0,1 |
+| sp500_trend_encoded | Categórica codificada | -1,0,1 |
+| fed_stance_encoded | Categórica codificada | -1,0,1 |
+| trade_recommendation_encoded | Categórica codificada | -1,0,1 |
+
+### Nota operacional (abr/2026)
+
+O pipeline de ML não depende mais de Perplexity no caminho crítico.
+As features macro continuam preenchidas por um módulo heurístico determinístico, evitando crescimento de amostras `no_macro`.
 
 ## Validação
 
