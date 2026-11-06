@@ -123,6 +123,46 @@ def melhor_plano(ab: np.ndarray, custos: Custos = Custos()) -> tuple[np.ndarray,
     return seq, melhor
 
 
+def melhor_plano_lote(ab: np.ndarray, custos: Custos = Custos()) -> np.ndarray:
+    """`melhor_plano` para N janelas de uma vez: ab (N, n+1) -> posições (N, n) int8."""
+    estados = np.array([-1, 0, 1])
+    perna = custos.taker - np.log1p(-custos.slippage)
+    troca = np.abs(estados[:, None] - estados[None, :]) * perna
+    r = np.diff(np.log(ab), axis=1)
+    n_amostras, n = r.shape
+    valor = -troca[1][None, :] + estados[None, :] * r[:, :1]
+    de = np.zeros((n, n_amostras, 3), np.int8)
+    for k in range(1, n):
+        cand = valor[:, :, None] - troca[None]  # [amostra, de, para]
+        de[k] = cand.argmax(1)
+        valor = cand.max(1) + estados[None, :] * r[:, k:k + 1]
+    s = (valor - troca[:, 1][None, :]).argmax(1)
+    seq = np.empty((n_amostras, n), np.int8)
+    linhas = np.arange(n_amostras)
+    for k in range(n - 1, -1, -1):
+        seq[:, k] = estados[s]
+        s = de[k][linhas, s]
+    return seq
+
+
+def primeira_operacao(planos: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """O que o bot executa de um plano (N, n): lado do 1º minuto e quantos minutos ele se mantém (0 se fora)."""
+    lado = planos[:, 0].astype(int)
+    dur = np.cumprod(planos == lado[:, None], axis=1).sum(1)
+    return lado, np.where(lado == 0, 0, dur)
+
+
+def recompensa_lote(ab: np.ndarray, lado: np.ndarray, dur: np.ndarray, custos: Custos = Custos()) -> np.ndarray:
+    """Log do capital depois da operação (entra na abertura 0, sai na abertura `dur`), taxa+slippage nas duas pernas.
+
+    Sem funding (no máximo uma cobrança na operação); a validação usa `posicoes`, que cobra.
+    """
+    entrada = ab[:, 0] * (1 + lado * custos.slippage)
+    saida = ab[np.arange(len(ab)), dur] * (1 - lado * custos.slippage)
+    pnl = lado * (saida / entrada - 1) - 2 * custos.taker
+    return np.where(lado == 0, 0.0, np.log1p(pnl))
+
+
 def _testes() -> None:
     c = Custos(taker=0.0005, maker=0.0002, slippage=0.0)
     ab = np.array([100.0, 100.0, 100.0, 100.0])
@@ -164,6 +204,18 @@ def _testes() -> None:
         a = 100 * np.exp(np.cumsum(rng.normal(0, 0.002, HORIZONTE + 1)))
         seq, v = melhor_plano(a, Custos())
         assert abs(posicoes(a, seq) - v) < 2e-3 * max(1, abs(v) * 100), (posicoes(a, seq), v)
+    # versões em lote = versões de uma janela
+    ab_n = 100 * np.exp(np.cumsum(rng.normal(0, 0.002, (300, HORIZONTE + 1)), axis=1))
+    lote = melhor_plano_lote(ab_n)
+    assert all((lote[i] == melhor_plano(ab_n[i])[0]).all() for i in range(300))
+    planos = np.array([[1, 1, 0, 1], [0, 1, 1, 1], [-1, -1, -1, -1], [1, -1, -1, 0]])
+    lado, dur = primeira_operacao(planos)
+    assert list(lado) == [1, 0, -1, 1] and list(dur) == [2, 0, 4, 1], (lado, dur)
+    ab4 = 100 * np.exp(np.cumsum(rng.normal(0, 0.003, (4, 5)), axis=1))
+    rec = recompensa_lote(ab4, lado, dur)
+    for i in range(4):
+        exato = posicoes(ab4[i], [lado[i]] * dur[i]) if dur[i] else 0.0
+        assert abs(rec[i] - np.log1p(exato)) < 1e-6, (rec[i], exato)
     print("rotulos ok")
 
 
