@@ -19,10 +19,12 @@ Where the NCM rebase stopped on the night of 04→05/11/2026. The plan is `ncm-l
 | # | Task | Status |
 |---|------|--------|
 | 1 | Raw Binance data (futures klines 1m, aggTrades, funding; spot klines) | done, checksums ok, 28/10 missing at the source |
-| 2 | No-future replay (`ncm/replay.py`) | code + 3 tests ok; **full run was in progress** |
+| 2 | No-future replay (`ncm/replay.py`) | done 05/11: 9 months, 0 NaN |
 | 3 | Honest simulator (`ncm/rotulos.py`) | done, self-test ok |
 | 4 | Fix bot windows (`trendingScanner.ts`) | not started; touches the live bot, wait for the user's ok |
-| 5–9 | Split, theory retests, NCM training, out-of-sample proof, paper live | not started |
+| 5 | Split (`ncm/split.py`) | done |
+| 6 | Theory retests (`ncm/teorias.py`) | done: all lose after fees, see [[Theory Retest BTC]] |
+| 7–9 | NCM training, out-of-sample proof, paper live | not started; next is 7 |
 
 ## Running when the session ended
 
