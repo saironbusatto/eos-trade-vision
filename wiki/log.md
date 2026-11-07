@@ -40,3 +40,5 @@
 ## [2026-11-06] update | NCM Exp 00–02 reports (run 1, GRPO review, KL diagnostic)
 
 ## [2026-11-07] update | NCM Exp 03 report; handoff experiment table
+
+## [2026-11-07] update | NCM Exp 04 report; Candidate Ridge BTC frozen

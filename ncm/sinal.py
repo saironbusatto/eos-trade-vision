@@ -30,10 +30,50 @@ def resultados(ab: np.ndarray) -> np.ndarray:
     return np.stack([rt.recompensa_lote(ab, np.full(n, lado), np.full(n, dur)) for lado, dur in ACOES], 1)
 
 
-def ridge(X: np.ndarray, Y: np.ndarray, lam: float = 100.0):
+def pesos_ridge(X: np.ndarray, Y: np.ndarray, lam: float = 100.0) -> np.ndarray:
     Xb = np.c_[X, np.ones(len(X))]
-    W = np.linalg.solve(Xb.T @ Xb + lam * np.eye(Xb.shape[1]), Xb.T @ Y)
+    return np.linalg.solve(Xb.T @ Xb + lam * np.eye(Xb.shape[1]), Xb.T @ Y)
+
+
+def ridge(X: np.ndarray, Y: np.ndarray, lam: float = 100.0):
+    W = pesos_ridge(X, Y, lam)
     return lambda Z: np.c_[Z, np.ones(len(Z))] @ W
+
+
+# ---------- candidato congelado para a task 8 ----------
+
+CANDIDATO = AQUI / "candidatos/ridge-btc.npz"
+LIMIAR_CONGELADO = 0.001  # escolhido olhando junho (conta entre as versões vistas)
+
+
+def aplica_congelado(z, X_bruto: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Decisão do candidato a partir da foto bruta: (lado, duração, resultado previsto); só entra se prev >= limiar."""
+    X = np.clip((X_bruto - z["media"]) / z["desvio"], -z["corte_z"], z["corte_z"]).astype(np.float32)
+    prev = np.c_[X, np.ones(len(X))] @ z["W"]
+    a = prev.argmax(1)
+    return z["acoes"][a, 0], z["acoes"][a, 1], prev.max(1)
+
+
+def congela() -> int:
+    """Treina o ridge em fev–mai, salva pesos + normalização + limiar e confere que o arquivo reproduz junho."""
+    import hashlib
+    d = tn.dados()
+    tr, v = d["treino"], d["val"]
+    W = pesos_ridge(tr["X"], resultados(tr["ab"]))
+    CANDIDATO.parent.mkdir(exist_ok=True)
+    np.savez(CANDIDATO, W=W, media=d["media"], desvio=d["desvio"], nomes=np.asarray(d["nomes"], str),
+             acoes=np.array(ACOES), limiar=LIMIAR_CONGELADO, corte_z=tn.CORTE_Z)
+    z = np.load(CANDIDATO, allow_pickle=False)
+    bruto = tn.sp.sem_teste(tn.sp.carrega())
+    Xv_bruto = bruto["X"][bruto["parte"] == tn.sp.VALIDACAO]
+    assert np.array_equal(bruto["t_ms"][bruto["parte"] == tn.sp.VALIDACAO], v["t_ms"]), "junho fora de ordem"
+    lado, dur, prev = aplica_congelado(z, Xv_bruto)
+    m = tn.opera(v, lado, dur, prev, float(z["limiar"]), d["funding"])
+    sha = hashlib.sha256(CANDIDATO.read_bytes()).hexdigest()
+    print(f"congelado {CANDIDATO.name} sha256 {sha}")
+    print(f"junho a partir do arquivo: {m['n']} trades ({m['long']}L/{m['short']}S) PF {m['pf']:.2f} "
+          f"composto {100 * m['composto']:+.2f}% dd {100 * m['dd']:.1f}%")
+    return 0
 
 
 def mlp(X: np.ndarray, Y: np.ndarray, epocas: int = 6):
@@ -118,4 +158,4 @@ is out of sample; the frozen test (07/jul–out) is not touched. "Never trade" =
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(congela() if "--congela" in sys.argv else main())
