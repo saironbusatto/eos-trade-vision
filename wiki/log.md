@@ -38,3 +38,5 @@
 ## [2026-11-06] update | NCM Handoff 2026-11-05 (task 7 state)
 
 ## [2026-11-06] update | NCM Exp 00–02 reports (run 1, GRPO review, KL diagnostic)
+
+## [2026-11-07] update | NCM Exp 03 report; handoff experiment table

@@ -7,7 +7,7 @@ tags:
   - ncm
   - handoff
 status: active
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 
 # NCM Handoff 2026-11-05
