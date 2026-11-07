@@ -42,3 +42,7 @@
 ## [2026-11-07] update | NCM Exp 03 report; handoff experiment table
 
 ## [2026-11-07] update | NCM Exp 04 report; Candidate Ridge BTC frozen
+
+## [2026-11-07] update | NCM Exp 05 report; Candidate Ridge BTC downgraded
+- Updated: NCM Handoff 2026-11-05
+- Updated: Candidate Ridge BTC

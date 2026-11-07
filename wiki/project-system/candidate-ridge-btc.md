@@ -39,7 +39,11 @@ result exactly: 15 trades (15 long, 0 short), PF 6.48, +6.95% compounded, 0.6% m
 
 ## Honest status
 
-- Classification: PROMISING. It is not SUPPORTED.
+- **Update 2026-11-07, [[NCM Exp 05 Value Model]]:**
+  - The same formula, refit on fev–abr and checked on mai, loses: 10 trades at 0.10%, PF 0.32. Its May loss does not beat a constant prediction.
+  - Classification is downgraded to **INCONCLUSIVE leaning REJECTED**.
+  - The frozen file is unchanged.
+- Original classification: PROMISING. It is not SUPPORTED.
   - 15 trades in one month is a tiny sample.
   - 22 of 38 episodes positive in the confident 1% could be luck.
   - The 0.10% threshold was chosen by looking at June.

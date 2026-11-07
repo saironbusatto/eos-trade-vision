@@ -52,9 +52,14 @@ Each experiment has its own report in the `eos-validation` format and changes on
 | [[NCM Exp 03 Executed Trade Plan]] | plan = only the executed trade | the decision moved to the coarse tokens, but the result per entry is still flat at −0.11%; KL ran away (~85) |
 | [[NCM Exp 04 Exact Expected Reward]] | exact Σπ·R over the 91 plans instead of sampling | π(flat) → 1 by step 200 and the gradient vanishes (softmax saturation); 23% of the mass on non-canonical codes is a design flaw |
 
-- Conclusion so far: three policy-style objectives all learn the global prior "trading loses" and stop. Ridge found its signal by value regression, which does not saturate.
-- Next, proposed and waiting for the user's ok: Exp 05, the NCM as a value model (regress the exact result of each action, act above a threshold), compared with ridge on an internal split (fev–abr → mai), with June untouched.
-- [[Candidate Ridge BTC]] frozen on 07/11: `ncm/candidatos/ridge-btc.npz`, SHA-256 `5b5e7cb1…94c1bf36`. It reproduces June from the raw photos (15 trades, PF 6.48).
+| [[NCM Exp 05 Value Model]] | NCM-sized transformer as a value model vs ridge, fit fev–abr, check mai | neither beats a constant prediction in May; both lose at every threshold; the ridge June edge does not repeat |
+
+- Conclusion so far:
+  - Three policy-style objectives (Exp 02–04) learn the global prior "trading loses" and stop.
+  - The value formulation (Exp 05) shows why: with these 205 features and taker costs, there is no out-of-sample signal in the next 5–45 min of BTC for either model.
+  - The bottleneck is the input and costs, not the model.
+- [[Candidate Ridge BTC]] frozen on 07/11: `ncm/candidatos/ridge-btc.npz`, SHA-256 `5b5e7cb1…94c1bf36`. It reproduces June from the raw photos (15 trades, PF 6.48). After Exp 05 it is downgraded to INCONCLUSIVE leaning REJECTED; it is still frozen and unchanged.
+- Next, waiting for the user's choice (Exp 05 item 13): (a) maker costs, (b) longer horizons, (c) new information in the photo, (d) stop BTC-minutes and decide what goes to the frozen test.
 
 ## How to run
 
@@ -95,7 +100,7 @@ Raw data in `~/.local/share/eos-ncm/raw/` (~4.8 GB, outside the repo).
 
 ## Next step
 
-1. After the user's ok: freeze the ridge candidate, then NCM run 2 with the exploration fix.
+1. The user chooses a direction from [[NCM Exp 05 Value Model]] item 13 (maker costs, longer horizons, new information, or stop).
 2. Task 8 only after the candidates are frozen; `split.abre_teste` opens the test once.
 3. Task 4 only with the user's ok.
 
