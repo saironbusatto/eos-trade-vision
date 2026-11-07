@@ -50,10 +50,11 @@ Each experiment has its own report in the `eos-validation` format and changes on
 | [[NCM Exp 01 GRPO Review]] | read-only audit | implementation correct; sampled entries have no gross edge; the decision lives in the fine tokens |
 | [[NCM Exp 02 KL Diagnostic]] | + KL brake (β 0.1) | no collapse (2.8% entry), but the result per entry is flat at −0.11% |
 | [[NCM Exp 03 Executed Trade Plan]] | plan = only the executed trade | the decision moved to the coarse tokens, but the result per entry is still flat at −0.11%; KL ran away (~85) |
+| [[NCM Exp 04 Exact Expected Reward]] | exact Σπ·R over the 91 plans instead of sampling | π(flat) → 1 by step 200 and the gradient vanishes (softmax saturation); 23% of the mass on non-canonical codes is a design flaw |
 
-- Conclusion so far: two plan representations hit the same plateau. The policy learns to trade less, not better. The bottleneck is likely the sampled learning signal.
-- Next, proposed and waiting for the user's ok: Exp 04, exact expected reward over the 91 plans instead of sampling.
-- The ridge candidate is not frozen yet. The user approved "os dois" (freeze ridge + NCM run 2), but the work moved to the controlled diagnostics first.
+- Conclusion so far: three policy-style objectives all learn the global prior "trading loses" and stop. Ridge found its signal by value regression, which does not saturate.
+- Next, proposed and waiting for the user's ok: Exp 05, the NCM as a value model (regress the exact result of each action, act above a threshold), compared with ridge on an internal split (fev–abr → mai), with June untouched.
+- [[Candidate Ridge BTC]] frozen on 07/11: `ncm/candidatos/ridge-btc.npz`, SHA-256 `5b5e7cb1…94c1bf36`. It reproduces June from the raw photos (15 trades, PF 6.48).
 
 ## How to run
 
