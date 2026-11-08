@@ -53,13 +53,14 @@ Each experiment has its own report in the `eos-validation` format and changes on
 | [[NCM Exp 04 Exact Expected Reward]] | exact Σπ·R over the 91 plans instead of sampling | π(flat) → 1 by step 200 and the gradient vanishes (softmax saturation); 23% of the mass on non-canonical codes is a design flaw |
 
 | [[NCM Exp 05 Value Model]] | NCM-sized transformer as a value model vs ridge, fit fev–abr, check mai | neither beats a constant prediction in May; both lose at every threshold; the ridge June edge does not repeat |
+| [[NCM Exp 06 Maker Costs]] | Exp 05 with maker costs: realistic maker entry (0.08%) and an optimistic ceiling (0.04%) | maker cuts the cost as expected, but every model still loses at every threshold with usable samples; only network seed 2's top 1% is positive (inconclusive) |
 
 - Conclusion so far:
   - Three policy-style objectives (Exp 02–04) learn the global prior "trading loses" and stop.
   - The value formulation (Exp 05) shows why: with these 205 features and taker costs, there is no out-of-sample signal in the next 5–45 min of BTC for either model.
   - The bottleneck is the input and costs, not the model.
 - [[Candidate Ridge BTC]] frozen on 07/11: `ncm/candidatos/ridge-btc.npz`, SHA-256 `5b5e7cb1…94c1bf36`. It reproduces June from the raw photos (15 trades, PF 6.48). After Exp 05 it is downgraded to INCONCLUSIVE leaning REJECTED; it is still frozen and unchanged.
-- Next, waiting for the user's choice (Exp 05 item 13): (a) maker costs, (b) longer horizons, (c) new information in the photo, (d) stop BTC-minutes and decide what goes to the frozen test.
+- (a) maker costs done in Exp 06: rejected as a rescue. Next, waiting for the user's choice: (b) longer horizons, (c) new information in the photo, (d) stop BTC-minutes and decide what goes to the frozen test.
 
 ## How to run
 

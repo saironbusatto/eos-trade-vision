@@ -15,6 +15,7 @@ Baseline architecture, contracts, runtime modules, strategy evidence and operati
 | [NCM Exp 03 Executed Trade Plan](project-system/ncm-exp-03-executed-trade-plan.md) | Plan = executed trade only: decision moves to coarse tokens, but per-entry result still flat at -0.11%. | 2026-11-07 |
 | [NCM Exp 04 Exact Expected Reward](project-system/ncm-exp-04-exact-expected-reward.md) | Exact expected reward over 91 plans: collapses to flat by step 200, gradient vanishes (softmax saturation). | 2026-11-07 |
 | [NCM Exp 05 Value Model](project-system/ncm-exp-05-value-model.md) | NCM-sized value model vs ridge, fev–abr → mai: neither beats a constant; ridge June edge does not repeat. | 2026-11-07 |
+| [NCM Exp 06 Maker Costs](project-system/ncm-exp-06-maker-costs.md) | Exp 05 with maker costs (realistic and ceiling): still no profitable trading in May. | 2026-11-08 |
 | [Candidate Ridge BTC](project-system/candidate-ridge-btc.md) | Frozen ridge rule for the task 8 test (sha256 5b5e7cb1…); reproduces June from raw photos. PROMISING. | 2026-11-07 |
 | [Project State and Open Items](project-system/project-state-and-open-items.md) | Timeline, uncommitted work, conflicts and next actions — start here when resuming. | 2026-11-04 |
 | [EOS Trade Vision System Baseline](project-system/eos-trade-vision-system-baseline.md) | Modules, data flow, decision stack and infra (AWS → Oracle since 2026-07-06). | 2026-11-04 |

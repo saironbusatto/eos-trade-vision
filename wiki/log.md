@@ -48,3 +48,6 @@
 - Updated: Candidate Ridge BTC
 
 ## [2026-11-08] update | NCM Handoff 2026-11-05 (task 4 done: bot windows)
+
+## [2026-11-08] update | NCM Exp 06 report (maker costs)
+- Updated: NCM Handoff 2026-11-05
