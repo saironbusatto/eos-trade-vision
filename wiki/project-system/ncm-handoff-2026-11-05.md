@@ -21,7 +21,7 @@ Where the NCM rebase stopped on the night of 04→05/11/2026. The plan is `ncm-l
 | 1 | Raw Binance data (futures klines 1m, aggTrades, funding; spot klines) | done, checksums ok, 28/10 missing at the source |
 | 2 | No-future replay (`ncm/replay.py`) | done 05/11: 9 months, 0 NaN |
 | 3 | Honest simulator (`ncm/rotulos.py`) | done, self-test ok |
-| 4 | Fix bot windows (`trendingScanner.ts`) | not started; touches the live bot, wait for the user's ok |
+| 4 | Fix bot windows (`trendingScanner.ts`) | done 08/11 with the user's ok: decide on 15m close via stream (+258 ms live), closed candles only, stop/target on the 1m stream, WIN = net of 0.12%, Sauron image off the signal path, `created_at` UTC fix; bot not restarted |
 | 5 | Split (`ncm/split.py`) | done |
 | 6 | Theory retests (`ncm/teorias.py`) | done: all lose after fees, see [[Theory Retest BTC]] |
 | 7 | NCM training by net PnL (`ncm/treino.py`) | in progress: run 1 collapsed to "never trade"; signal check done, see below |
@@ -102,7 +102,7 @@ Raw data in `~/.local/share/eos-ncm/raw/` (~4.8 GB, outside the repo).
 
 1. The user chooses a direction from [[NCM Exp 05 Value Model]] item 13 (maker costs, longer horizons, new information, or stop).
 2. Task 8 only after the candidates are frozen; `split.abre_teste` opens the test once.
-3. Task 4 only with the user's ok.
+3. Task 4 done; the running bot picks it up only after a restart.
 
 ## Loose ends
 

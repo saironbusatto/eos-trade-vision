@@ -6,6 +6,8 @@ import { getMacroAnalysis, getMacroForDB } from "./macroAnalyzer";
 import { getDataService } from "./engine";
 import { mlService } from "./mlService";
 import { collectExitFeatures, fetchCounterfactualPrices, makeExitDecision, USE_ML_EXIT } from "./exitDecisionEngine";
+import { CandleStream, fechados, Kline1m, resultadoLiquido, sqliteUtcMs, tocou } from "./candleStream";
+import type { Signal } from "./sqliteDatabase";
 
 // Default bankroll for calculations (user can override)
 const DEFAULT_BANKROLL = 1000; // $1000
@@ -156,8 +158,9 @@ interface DecisionComponents {
 const STRATEGY_VERSION = 'v3.0';
 const DATA_COLLECTION_MODE = false; // false = produção com threshold 70%
 const MIN_SCORE = DATA_COLLECTION_MODE ? 40 : 70; // 40% coleta, 70% produção
-const SCAN_INTERVAL = 10 * 60 * 1000; // 10 minutos
-const VALIDATION_INTERVAL = 5 * 60 * 1000; // Valida a cada 5 min
+// Decisão no fechamento do candle de 15m (CandleStream); stop/alvo pelo stream de 1m.
+// O loop de 5 min segue para timeout, checkpoints e status, e como reserva se o stream cair.
+const VALIDATION_INTERVAL = 5 * 60 * 1000;
 const SIGNAL_MAX_AGE_MIN = Math.max(5, envNumber('SIGNAL_MAX_AGE_MIN', 45));
 const TIMEOUT_LOSS_GRACE_ENABLED = envBool('TIMEOUT_LOSS_GRACE_ENABLED', true);
 const SIGNAL_TIMEOUT_LOSS_GRACE_MIN = Math.max(0, envNumber('SIGNAL_TIMEOUT_LOSS_GRACE_MIN', 15));
@@ -180,6 +183,10 @@ export class TrendingScanner {
     private isRunning = false;
     private trendingCoins: TrendingCoin[] = [];
     private monitoredSymbols = new Set<string>(DEFAULT_MONITORED_SYMBOLS);
+    private candles = new CandleStream();
+    private ultimoFechamentoMs = 0;
+    private escaneando = false;
+    private fechando = new Set<number>();
 
     private calculateRiskPercents(signal: OFASignal): { stopPercent: number; targetPercent: number } {
         const volatilityPercent = signal.volatility15m * 100;
@@ -420,13 +427,17 @@ export class TrendingScanner {
 
         console.log(`[TrendingScanner] DataService warmup complete: ${readyCount} symbols LIVE_OK`);
 
-        // First scan immediately
-        await this.scan();
-
-        // Schedule regular scans
-        setInterval(() => {
-            if (this.isRunning) this.scan();
-        }, SCAN_INTERVAL);
+        // Decide só no fechamento do 15m (todos os símbolos fecham no mesmo instante: um scan por fechamento)
+        this.candles.on("fechou15m", (_simbolo: string, fechamentoMs: number) => {
+            if (!this.isRunning || fechamentoMs <= this.ultimoFechamentoMs) return;
+            this.ultimoFechamentoMs = fechamentoMs;
+            this.scan(fechamentoMs);
+        });
+        this.candles.on("kline1m", (k: Kline1m) => {
+            if (this.isRunning) this.checaStopAlvo(k).catch(err => console.error("[TrendingScanner] stop/alvo:", err));
+        });
+        this.candles.start([...this.monitoredSymbols]);
+        console.log("[TrendingScanner] Decisão no fechamento do candle de 15m; stop/alvo pelo stream de 1m");
 
         // Schedule validation loop
         setInterval(() => {
@@ -438,11 +449,17 @@ export class TrendingScanner {
 
     stop(): void {
         this.isRunning = false;
+        this.candles.stop();
         console.log("[TrendingScanner] Scanner parado");
     }
 
-    private async scan(): Promise<void> {
-        console.log("[TrendingScanner] Buscando top 10 trending...");
+    private async scan(fechamentoMs: number): Promise<void> {
+        if (this.escaneando) {
+            console.warn("[TrendingScanner] scan anterior ainda rodando, fechamento ignorado");
+            return;
+        }
+        this.escaneando = true;
+        console.log(`[TrendingScanner] Candle 15m fechou: início do scan +${Date.now() - fechamentoMs}ms após o fechamento`);
 
         try {
             // 1. Get top 10 trending by volume
@@ -460,6 +477,9 @@ export class TrendingScanner {
 
         } catch (error) {
             console.error("[TrendingScanner] Erro no scan:", error);
+        } finally {
+            this.escaneando = false;
+            console.log(`[TrendingScanner] Decisão concluída +${Date.now() - fechamentoMs}ms após o fechamento`);
         }
     }
 
@@ -705,7 +725,8 @@ export class TrendingScanner {
             ]);
 
             // Also get basic kline data for trend/momentum
-            const klines = await this.getKlines(coin.symbol, "15m", 20);
+            // 21 do REST e só os fechados: o último candle do REST é o que está em formação
+            const klines = fechados(await this.getKlines(coin.symbol, "15m", 21)).slice(-20);
             if (klines.length < 20) return null;
 
             const volumeRatio = this.calculateVolumeRatio(klines);
@@ -864,6 +885,7 @@ export class TrendingScanner {
         }> = [];
 
         for (const signal of pending) {
+            if (this.fechando.has(signal.id)) continue; // o stream está fechando este sinal
             try {
                 // Get current price
                 const currentPrice = await this.getCurrentPrice(signal.symbol);
@@ -872,7 +894,7 @@ export class TrendingScanner {
                 const macroAnalysis = await getMacroAnalysis();
                 const macroData = getMacroForDB(macroAnalysis);
 
-                const age = Date.now() - new Date(signal.created_at).getTime();
+                const age = Date.now() - sqliteUtcMs(signal.created_at);
                 const ageMinutes = Math.floor(age / (60 * 1000));
 
                 // ── Exit Decision Engine ──────────────────────────────────────
@@ -895,7 +917,7 @@ export class TrendingScanner {
                             const profit_percent = signal.action === 'BUY'
                                 ? ((currentPrice - signal.entry_price) / signal.entry_price) * 100
                                 : ((signal.entry_price - currentPrice) / signal.entry_price) * 100;
-                            const result = profit_percent >= 0 ? 'WIN' : 'LOSS';
+                            const result = resultadoLiquido(profit_percent);
 
                             const closeTimeMs = Date.now();
                             sqliteDatabase.finalizeExitLog(signal.id, result as 'WIN' | 'LOSS', profit_percent, closeTimeMs);
@@ -949,7 +971,7 @@ export class TrendingScanner {
                         ? ((currentPrice - signal.entry_price) / signal.entry_price) * 100
                         : ((signal.entry_price - currentPrice) / signal.entry_price) * 100;
 
-                    const result = profit_percent >= 0 ? 'WIN' : 'LOSS';
+                    const result = resultadoLiquido(profit_percent);
 
                     const inLossGraceWindow = TIMEOUT_LOSS_GRACE_ENABLED
                         && result === 'LOSS'
@@ -1007,6 +1029,38 @@ export class TrendingScanner {
         if (statusUpdates.length > 0) {
             await this.sendConsolidatedStatusUpdate(statusUpdates);
         }
+    }
+
+    /** Stop/alvo pelo stream de 1m: reage em segundos em vez de esperar o loop de 5 min. */
+    private async checaStopAlvo(k: Kline1m): Promise<void> {
+        const pendentes = sqliteDatabase.getPendingSignals(0).filter(s => s.symbol === k.simbolo);
+        for (const signal of pendentes) {
+            if (this.fechando.has(signal.id)) continue;
+            // Máxima/mínima do candle só contam se ele começou depois da entrada; antes disso, só o preço atual.
+            const usaFaixa = k.inicioMs >= sqliteUtcMs(signal.created_at);
+            const toque = tocou(signal.action, signal.stop_loss, signal.take_profit,
+                usaFaixa ? k.high : k.close, usaFaixa ? k.low : k.close);
+            if (!toque) continue;
+            this.fechando.add(signal.id);
+            try {
+                await this.fechaNoToque(signal, toque.preco, toque.tipo);
+            } finally {
+                this.fechando.delete(signal.id);
+            }
+        }
+    }
+
+    private async fechaNoToque(signal: Signal, preco: number, tipo: "STOP" | "ALVO"): Promise<void> {
+        const brutoPct = signal.action === "BUY"
+            ? ((preco - signal.entry_price) / signal.entry_price) * 100
+            : ((signal.entry_price - preco) / signal.entry_price) * 100;
+        const result = resultadoLiquido(brutoPct);
+        const macroData = getMacroForDB(await getMacroAnalysis());
+        if (sqliteDatabase.getSignal(signal.id)?.result !== "PENDING") return; // o loop de 5 min fechou antes
+        sqliteDatabase.closeSignal(signal.id, preco, result, brutoPct, macroData);
+        sqliteDatabase.finalizeExitLog(signal.id, result, brutoPct, Date.now());
+        console.log(`[TrendingScanner] ${tipo} #${signal.id} ${signal.symbol} @ ${preco} pelo stream: ${result} ${brutoPct.toFixed(2)}% bruto`);
+        await this.sendValidationResult(signal, result, preco, brutoPct);
     }
 
     /** Preenche contrafactuais de saídas antigas que já têm 16+ min. */
@@ -1099,7 +1153,7 @@ Resultado: ${profitStr} em ${ageMinutes}min
 ${baselineInfo}
 ━━━━━━━━━━━━━━━━━━━`;
 
-        await telegram.sendBreakoutAlert(message, signal.symbol, signal.action, 75, "O Olho ve tudo.");
+        await telegram.sendBreakoutAlert(message); // sem imagem: o Sauron (execSync até 90 s) travava o loop
         console.log(`[TrendingScanner] Timeout ${result} for #${signal.id} after ${ageMinutes}min`);
     }
 
@@ -1146,7 +1200,7 @@ Resultado: ${profitStr}
 ${baselineInfo}
 ━━━━━━━━━━━━━━━━━━━`;
 
-        await telegram.sendBreakoutAlert(message, signal.symbol, signal.action, 75, "O Olho ve tudo.");
+        await telegram.sendBreakoutAlert(message);
         console.log(`[TrendingScanner] Sent ${result} for #${signal.id} | WinRate: ${winRate}%`);
     }
 
@@ -1201,9 +1255,8 @@ ${baselineInfo}
 
         message += `_${quote}_`;
 
-        const primarySignal = signals[0];
-        const primaryDirection = primarySignal.direction === "LONG" ? "BUY" : "SELL";
-        await telegram.sendBreakoutAlert(message, primarySignal.symbol, primaryDirection, primarySignal.score, quote);
+        // Sem imagem do Sauron no caminho do sinal: a geração (execSync até 90 s) atrasava o envio e travava o stream
+        await telegram.sendBreakoutAlert(message);
         console.log(`[TrendingScanner] Enviados ${signals.length} sinais consolidados`);
     }
 }

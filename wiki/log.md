@@ -46,3 +46,5 @@
 ## [2026-11-07] update | NCM Exp 05 report; Candidate Ridge BTC downgraded
 - Updated: NCM Handoff 2026-11-05
 - Updated: Candidate Ridge BTC
+
+## [2026-11-08] update | NCM Handoff 2026-11-05 (task 4 done: bot windows)

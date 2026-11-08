@@ -14,6 +14,7 @@ import { spawn } from 'child_process';
 import * as path from 'path';
 import OpenAI from 'openai';
 import { Signal } from './sqliteDatabase';
+import { sqliteUtcMs } from './candleStream';
 
 // ─── Feature flags (controlados pelo .env) ────────────────────────────────────
 export const USE_ML_EXIT = process.env.USE_ML_EXIT === 'true';
@@ -195,7 +196,7 @@ export async function collectExitFeatures(
             : ((signal.entry_price - currentPrice) / signal.entry_price) * 100;
 
         // ── Tempo na operação ──────────────────────────────────────────────────
-        const entryMs = new Date(signal.created_at).getTime();
+        const entryMs = sqliteUtcMs(signal.created_at);
         const time_in_trade_seconds = Math.max(0, (Date.now() - entryMs) / 1000);
 
         // ── Distâncias ao stop e ao alvo (como % do entry) ────────────────────
