@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import path from 'path';
+import { resultadoLiquido, sqliteUtcMs } from './candleStream';
 
 // Initialize SQLite database
 const DB_PATH = process.env.DATABASE_PATH || './data/eos.db';
@@ -643,6 +644,7 @@ export const sqliteDatabase = {
         }
 
         if (result !== 'PENDING') {
+            result = resultadoLiquido(profitPercent); // alvo tocado só é WIN se sobrar dinheiro depois das taxas
             this.closeSignal(id, currentPrice, result, profitPercent, macroData);
         }
 
@@ -659,7 +661,7 @@ export const sqliteDatabase = {
         fed_stance?: string;
     }): void {
         const signal = this.getSignal(id);
-        if (!signal) return;
+        if (!signal || signal.result !== 'PENDING') return; // stream e loop de validação podem tentar fechar o mesmo sinal
 
         // Update signal
         const updateStmt = db.prepare(`
@@ -673,7 +675,7 @@ export const sqliteDatabase = {
         const getProfit = (min: number) => checkpoints.find(c => c.checkpoint_min === min)?.profit_percent ?? null;
 
         // Calculate time to result and time features
-        const createdDate = new Date(signal.created_at);
+        const createdDate = new Date(sqliteUtcMs(signal.created_at));
         const createdAt = createdDate.getTime();
         const timeToResult = Math.round((Date.now() - createdAt) / (60 * 1000));
         const hourUtc = createdDate.getUTCHours();

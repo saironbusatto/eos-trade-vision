@@ -6,6 +6,7 @@
  * 
  * Baseado em: Market Profile / Volume Profile (Trader Dale)
  */
+import { fechados } from '../candleStream';
 
 export interface VolumeProfile {
     vpoc: number;               // Preço com maior volume (Point of Control)
@@ -49,7 +50,7 @@ async function fetchKlines(symbol: string, interval: string, limit: number): Pro
     const response = await fetch(url);
     const data = await response.json() as any[];
 
-    return data.map(k => ({
+    return fechados(data).map(k => ({ // sem o candle em formação
         open: parseFloat(k[1]),
         high: parseFloat(k[2]),
         low: parseFloat(k[3]),

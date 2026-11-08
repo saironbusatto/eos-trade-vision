@@ -7,7 +7,7 @@ tags:
   - ncm
   - handoff
 status: active
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 
 # NCM Handoff 2026-11-05
@@ -21,11 +21,11 @@ Where the NCM rebase stopped on the night of 04→05/11/2026. The plan is `ncm-l
 | 1 | Raw Binance data (futures klines 1m, aggTrades, funding; spot klines) | done, checksums ok, 28/10 missing at the source |
 | 2 | No-future replay (`ncm/replay.py`) | done 05/11: 9 months, 0 NaN |
 | 3 | Honest simulator (`ncm/rotulos.py`) | done, self-test ok |
-| 4 | Fix bot windows (`trendingScanner.ts`) | not started; touches the live bot, wait for the user's ok |
+| 4 | Fix bot windows (`trendingScanner.ts`) | done 08/11 with the user's ok: decide on 15m close via stream (+258 ms live), closed candles only, stop/target on the 1m stream, WIN = net of 0.12%, Sauron image off the signal path, `created_at` UTC fix; bot not restarted |
 | 5 | Split (`ncm/split.py`) | done |
 | 6 | Theory retests (`ncm/teorias.py`) | done: all lose after fees, see [[Theory Retest BTC]] |
-| 7 | NCM training by net PnL (`ncm/treino.py`) | in progress: run 1 collapsed to "never trade"; signal check done, see below |
-| 8–9 | Out-of-sample proof, paper live | not started |
+| 7 | NCM training by net PnL (`ncm/treino.py`) | closed for BTC 08/11 by the user (option d): no repeatable edge in Exp 00–07; see [[NCM BTC Closing]] |
+| 8–9 | Out-of-sample proof, paper live | not run: the frozen test is kept closed for a future candidate (no lock written) |
 
 ## Task 7 state (06/11/2026)
 
@@ -38,10 +38,30 @@ Where the NCM rebase stopped on the night of 04→05/11/2026. The plan is `ncm-l
 - `ncm/sinal.py` asked whether there is money in the photos at all. See [[Signal Check BTC]].
   - The MLP overfits.
   - Ridge shows a weak long-only contrarian edge in June: 15 trades at the 0.10% threshold, PF 6.5. Not proven.
-- Versions seen in June so far: 180. These count toward the task 8 deflated Sharpe.
-- **Waiting for the user's ok** on two things:
-  1. freeze the ridge rule (0.10% threshold) as a task 8 candidate;
-  2. NCM run 2 with exploration fixed (KL to the warm-up model, a minimum share of sampled entries).
+- Versions seen in June so far: 180. These count toward the task 8 deflated Sharpe. The controlled experiments below use train data only and add none.
+
+## Controlled experiments (07/11/2026)
+
+Each experiment has its own report in the `eos-validation` format and changes one variable at a time.
+
+| Exp | Change | Result |
+|---|---|---|
+| [[NCM Exp 00 GRPO Run 1]] | first GRPO run | collapsed to never trade by step 200: INVALID TEST for edge |
+| [[NCM Exp 01 GRPO Review]] | read-only audit | implementation correct; sampled entries have no gross edge; the decision lives in the fine tokens |
+| [[NCM Exp 02 KL Diagnostic]] | + KL brake (β 0.1) | no collapse (2.8% entry), but the result per entry is flat at −0.11% |
+| [[NCM Exp 03 Executed Trade Plan]] | plan = only the executed trade | the decision moved to the coarse tokens, but the result per entry is still flat at −0.11%; KL ran away (~85) |
+| [[NCM Exp 04 Exact Expected Reward]] | exact Σπ·R over the 91 plans instead of sampling | π(flat) → 1 by step 200 and the gradient vanishes (softmax saturation); 23% of the mass on non-canonical codes is a design flaw |
+
+| [[NCM Exp 05 Value Model]] | NCM-sized transformer as a value model vs ridge, fit fev–abr, check mai | neither beats a constant prediction in May; both lose at every threshold; the ridge June edge does not repeat |
+| [[NCM Exp 06 Maker Costs]] | Exp 05 with maker costs: realistic maker entry (0.08%) and an optimistic ceiling (0.04%) | maker cuts the cost as expected, but every model still loses at every threshold with usable samples; only network seed 2's top 1% is positive (inconclusive) |
+| [[NCM Exp 07 Long Horizons]] | horizons 1/2/4/8 h, two folds (check mai, check abr), funding charged | some models positive in May, every model loses in April; at hour scale the models learn the fit-period trend |
+
+- Conclusion so far:
+  - Three policy-style objectives (Exp 02–04) learn the global prior "trading loses" and stop.
+  - The value formulation (Exp 05) shows why: with these 205 features and taker costs, there is no out-of-sample signal in the next 5–45 min of BTC for either model.
+  - The bottleneck is the input and costs, not the model.
+- [[Candidate Ridge BTC]] frozen on 07/11: `ncm/candidatos/ridge-btc.npz`, SHA-256 `5b5e7cb1…94c1bf36`. It reproduces June from the raw photos (15 trades, PF 6.48). After Exp 05 it is downgraded to INCONCLUSIVE leaning REJECTED; it is still frozen and unchanged.
+- (a) maker costs (Exp 06) and (b) long horizons (Exp 07) done: both rejected. **The user chose (d) on 08/11: BTC stopped, frozen test kept closed.** See [[NCM BTC Closing]]. Reopening would need new information (option c: order book, liquidations, open interest, basis), collected live.
 
 ## How to run
 
@@ -82,9 +102,9 @@ Raw data in `~/.local/share/eos-ncm/raw/` (~4.8 GB, outside the repo).
 
 ## Next step
 
-1. After the user's ok: freeze the ridge candidate, then NCM run 2 with the exploration fix.
+1. BTC stopped (see [[NCM BTC Closing]]). Possible next work: collect new information live (option c), or keep the fixed bot in paper mode.
 2. Task 8 only after the candidates are frozen; `split.abre_teste` opens the test once.
-3. Task 4 only with the user's ok.
+3. Task 4 done; the running bot picks it up only after a restart.
 
 ## Loose ends
 

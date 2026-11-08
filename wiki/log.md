@@ -36,3 +36,25 @@
 ## [2026-11-06] update | Signal Check BTC (task 7)
 
 ## [2026-11-06] update | NCM Handoff 2026-11-05 (task 7 state)
+
+## [2026-11-06] update | NCM Exp 00–02 reports (run 1, GRPO review, KL diagnostic)
+
+## [2026-11-07] update | NCM Exp 03 report; handoff experiment table
+
+## [2026-11-07] update | NCM Exp 04 report; Candidate Ridge BTC frozen
+
+## [2026-11-07] update | NCM Exp 05 report; Candidate Ridge BTC downgraded
+- Updated: NCM Handoff 2026-11-05
+- Updated: Candidate Ridge BTC
+
+## [2026-11-08] update | NCM Handoff 2026-11-05 (task 4 done: bot windows)
+
+## [2026-11-08] update | NCM Exp 06 report (maker costs)
+- Updated: NCM Handoff 2026-11-05
+
+## [2026-11-08] update | NCM Exp 07 report (long horizons, two folds)
+- Updated: NCM Handoff 2026-11-05
+
+## [2026-11-08] update | NCM BTC Closing (option d, test kept closed)
+- Updated: NCM Handoff 2026-11-05
+- Updated: Candidate Ridge BTC

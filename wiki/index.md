@@ -6,9 +6,19 @@ Baseline architecture, contracts, runtime modules, strategy evidence and operati
 
 | Article | Summary | Updated |
 |---------|---------|---------|
-| [NCM Handoff 2026-11-05](project-system/ncm-handoff-2026-11-05.md) | Where the NCM rebase stopped: tasks 1–3, 5, 6 done; task 7 run 1 collapsed, ridge signal check; how to resume. | 2026-11-06 |
+| [NCM Handoff 2026-11-05](project-system/ncm-handoff-2026-11-05.md) | Where the NCM rebase stopped: tasks 1–3, 5, 6 done; task 7 controlled experiments 00–03; how to resume. | 2026-11-07 |
 | [Theory Retest BTC](project-system/theory-retest-btc.md) | Old EOS rules in the honest simulator (fev–jun + 01–06/jul): all lose after fees. | 2026-11-05 |
 | [Signal Check BTC](project-system/signal-check-btc.md) | Ridge/MLP predicting each entry's net result: MLP overfits, ridge shows a weak long-only contrarian edge in June. NCM GRPO run 1 collapsed to never trade. | 2026-11-06 |
+| [NCM Exp 00 GRPO Run 1](project-system/ncm-exp-00-grpo-run-1.md) | First NCM training by net PnL: collapsed to never trade by step 200 (INVALID TEST for edge). | 2026-11-06 |
+| [NCM Exp 01 GRPO Review](project-system/ncm-exp-01-grpo-review.md) | Read-only audit: GRPO and reward are correct; entries carry no gross edge; the trade decision lives in the fine tokens. | 2026-11-06 |
+| [NCM Exp 02 KL Diagnostic](project-system/ncm-exp-02-kl-diagnostic.md) | 1000 steps + KL brake: no collapse (2.8% entry) but per-entry result unchanged at -0.11%. | 2026-11-06 |
+| [NCM Exp 03 Executed Trade Plan](project-system/ncm-exp-03-executed-trade-plan.md) | Plan = executed trade only: decision moves to coarse tokens, but per-entry result still flat at -0.11%. | 2026-11-07 |
+| [NCM Exp 04 Exact Expected Reward](project-system/ncm-exp-04-exact-expected-reward.md) | Exact expected reward over 91 plans: collapses to flat by step 200, gradient vanishes (softmax saturation). | 2026-11-07 |
+| [NCM Exp 05 Value Model](project-system/ncm-exp-05-value-model.md) | NCM-sized value model vs ridge, fev–abr → mai: neither beats a constant; ridge June edge does not repeat. | 2026-11-07 |
+| [NCM Exp 06 Maker Costs](project-system/ncm-exp-06-maker-costs.md) | Exp 05 with maker costs (realistic and ceiling): still no profitable trading in May. | 2026-11-08 |
+| [NCM Exp 07 Long Horizons](project-system/ncm-exp-07-long-horizons.md) | Horizons 1–8 h on two folds: May positives do not repeat in April; models learn the fit-period trend. | 2026-11-08 |
+| [NCM BTC Closing](project-system/ncm-btc-closing.md) | Decision 08/11: BTC NCM work stopped after Exp 00–07; frozen test kept closed. | 2026-11-08 |
+| [Candidate Ridge BTC](project-system/candidate-ridge-btc.md) | Frozen ridge rule for the task 8 test (sha256 5b5e7cb1…); reproduces June from raw photos. PROMISING. | 2026-11-07 |
 | [Project State and Open Items](project-system/project-state-and-open-items.md) | Timeline, uncommitted work, conflicts and next actions — start here when resuming. | 2026-11-04 |
 | [EOS Trade Vision System Baseline](project-system/eos-trade-vision-system-baseline.md) | Modules, data flow, decision stack and infra (AWS → Oracle since 2026-07-06). | 2026-11-04 |
 | [Validated Subset Filter](project-system/validated-subset-filter.md) | Walk-forward-validated symbol × day × hour-direction gate; why unfiltered trading is ruinous. | 2026-11-04 |
