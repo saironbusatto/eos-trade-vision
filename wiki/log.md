@@ -51,3 +51,6 @@
 
 ## [2026-11-08] update | NCM Exp 06 report (maker costs)
 - Updated: NCM Handoff 2026-11-05
+
+## [2026-11-08] update | NCM Exp 07 report (long horizons, two folds)
+- Updated: NCM Handoff 2026-11-05
