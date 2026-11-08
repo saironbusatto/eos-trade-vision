@@ -43,6 +43,7 @@ result exactly: 15 trades (15 long, 0 short), PF 6.48, +6.95% compounded, 0.6% m
   - The same formula, refit on fev–abr and checked on mai, loses: 10 trades at 0.10%, PF 0.32. Its May loss does not beat a constant prediction.
   - Classification is downgraded to **INCONCLUSIVE leaning REJECTED**.
   - The frozen file is unchanged.
+- **Update 2026-11-08:** BTC work stopped by the user; the frozen test was kept closed, so this candidate is **not** going to be tested ([[NCM BTC Closing]]).
 - Original classification: PROMISING. It is not SUPPORTED.
   - 15 trades in one month is a tiny sample.
   - 22 of 38 episodes positive in the confident 1% could be luck.

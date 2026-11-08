@@ -24,8 +24,8 @@ Where the NCM rebase stopped on the night of 04→05/11/2026. The plan is `ncm-l
 | 4 | Fix bot windows (`trendingScanner.ts`) | done 08/11 with the user's ok: decide on 15m close via stream (+258 ms live), closed candles only, stop/target on the 1m stream, WIN = net of 0.12%, Sauron image off the signal path, `created_at` UTC fix; bot not restarted |
 | 5 | Split (`ncm/split.py`) | done |
 | 6 | Theory retests (`ncm/teorias.py`) | done: all lose after fees, see [[Theory Retest BTC]] |
-| 7 | NCM training by net PnL (`ncm/treino.py`) | in progress: run 1 collapsed to "never trade"; signal check done, see below |
-| 8–9 | Out-of-sample proof, paper live | not started |
+| 7 | NCM training by net PnL (`ncm/treino.py`) | closed for BTC 08/11 by the user (option d): no repeatable edge in Exp 00–07; see [[NCM BTC Closing]] |
+| 8–9 | Out-of-sample proof, paper live | not run: the frozen test is kept closed for a future candidate (no lock written) |
 
 ## Task 7 state (06/11/2026)
 
@@ -61,7 +61,7 @@ Each experiment has its own report in the `eos-validation` format and changes on
   - The value formulation (Exp 05) shows why: with these 205 features and taker costs, there is no out-of-sample signal in the next 5–45 min of BTC for either model.
   - The bottleneck is the input and costs, not the model.
 - [[Candidate Ridge BTC]] frozen on 07/11: `ncm/candidatos/ridge-btc.npz`, SHA-256 `5b5e7cb1…94c1bf36`. It reproduces June from the raw photos (15 trades, PF 6.48). After Exp 05 it is downgraded to INCONCLUSIVE leaning REJECTED; it is still frozen and unchanged.
-- (a) maker costs (Exp 06) and (b) long horizons (Exp 07) done: both rejected. Next, waiting for the user's choice: (c) new information in the photo (order book, liquidations, open interest, basis; needs new data collection) or (d) stop BTC and decide what goes to the frozen test.
+- (a) maker costs (Exp 06) and (b) long horizons (Exp 07) done: both rejected. **The user chose (d) on 08/11: BTC stopped, frozen test kept closed.** See [[NCM BTC Closing]]. Reopening would need new information (option c: order book, liquidations, open interest, basis), collected live.
 
 ## How to run
 
@@ -102,7 +102,7 @@ Raw data in `~/.local/share/eos-ncm/raw/` (~4.8 GB, outside the repo).
 
 ## Next step
 
-1. The user chooses a direction from [[NCM Exp 05 Value Model]] item 13 (maker costs, longer horizons, new information, or stop).
+1. BTC stopped (see [[NCM BTC Closing]]). Possible next work: collect new information live (option c), or keep the fixed bot in paper mode.
 2. Task 8 only after the candidates are frozen; `split.abre_teste` opens the test once.
 3. Task 4 done; the running bot picks it up only after a restart.
 
