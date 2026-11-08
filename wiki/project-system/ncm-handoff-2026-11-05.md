@@ -55,6 +55,7 @@ Each experiment has its own report in the `eos-validation` format and changes on
 | [[NCM Exp 05 Value Model]] | NCM-sized transformer as a value model vs ridge, fit fev–abr, check mai | neither beats a constant prediction in May; both lose at every threshold; the ridge June edge does not repeat |
 | [[NCM Exp 06 Maker Costs]] | Exp 05 with maker costs: realistic maker entry (0.08%) and an optimistic ceiling (0.04%) | maker cuts the cost as expected, but every model still loses at every threshold with usable samples; only network seed 2's top 1% is positive (inconclusive) |
 | [[NCM Exp 07 Long Horizons]] | horizons 1/2/4/8 h, two folds (check mai, check abr), funding charged | some models positive in May, every model loses in April; at hour scale the models learn the fit-period trend |
+| [[NCM Exp 08 Pipeline Audit]] | read-only audit with known-answer checks | pipeline sound (alignment 0.986, volatility R² 0.36 out of sample); direction R² < 0; flow features describe the past, and fees need ~76% hit rate at 15 min |
 
 - Conclusion so far:
   - Three policy-style objectives (Exp 02–04) learn the global prior "trading loses" and stop.

@@ -17,6 +17,7 @@ Baseline architecture, contracts, runtime modules, strategy evidence and operati
 | [NCM Exp 05 Value Model](project-system/ncm-exp-05-value-model.md) | NCM-sized value model vs ridge, fev–abr → mai: neither beats a constant; ridge June edge does not repeat. | 2026-11-07 |
 | [NCM Exp 06 Maker Costs](project-system/ncm-exp-06-maker-costs.md) | Exp 05 with maker costs (realistic and ceiling): still no profitable trading in May. | 2026-11-08 |
 | [NCM Exp 07 Long Horizons](project-system/ncm-exp-07-long-horizons.md) | Horizons 1–8 h on two folds: May positives do not repeat in April; models learn the fit-period trend. | 2026-11-08 |
+| [NCM Exp 08 Pipeline Audit](project-system/ncm-exp-08-pipeline-audit.md) | Pipeline audit with sources: no defect; volatility predictable, direction not; why the rules fail. | 2026-11-08 |
 | [NCM BTC Closing](project-system/ncm-btc-closing.md) | Decision 08/11: BTC NCM work stopped after Exp 00–07; frozen test kept closed. | 2026-11-08 |
 | [Candidate Ridge BTC](project-system/candidate-ridge-btc.md) | Frozen ridge rule for the task 8 test (sha256 5b5e7cb1…); reproduces June from raw photos. PROMISING. | 2026-11-07 |
 | [Project State and Open Items](project-system/project-state-and-open-items.md) | Timeline, uncommitted work, conflicts and next actions — start here when resuming. | 2026-11-04 |

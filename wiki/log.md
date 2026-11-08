@@ -58,3 +58,6 @@
 ## [2026-11-08] update | NCM BTC Closing (option d, test kept closed)
 - Updated: NCM Handoff 2026-11-05
 - Updated: Candidate Ridge BTC
+
+## [2026-11-08] update | NCM Exp 08 pipeline audit (with sources)
+- Updated: NCM Handoff 2026-11-05
