@@ -61,3 +61,11 @@
 
 ## [2026-11-08] update | NCM Exp 08 pipeline audit (with sources)
 - Updated: NCM Handoff 2026-11-05
+
+## [2026-11-08] update | Backtest Step 0 History Data (new direction: backtest research)
+
+## [2026-11-08] update | Theory 1 Funding Carry
+- Updated: Theory 1 Funding Carry (T-bill benchmark, ETH, SOL)
+- Updated: Theory 1 Funding Carry (V5 funding>T-bill, final verdict, liquidation correction)
+
+## [2026-11-09] update | Backtest Research Handoff 2026-11-09
