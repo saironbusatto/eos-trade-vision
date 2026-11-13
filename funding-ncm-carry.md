@@ -48,6 +48,25 @@ much in each, how much in cash. It must beat the dollar rate after real costs.
 - Report: `wiki/project-system/funding-carry-phase-1-2-rotation.md`. 4 of 20 variants used.
 - Deviation: the "funding interval shortens" exit was replaced before running by "24 h funding below −0.3%".
 
+## Option 1 (user's choice, 2026-11-13): new cost and capital structure
+
+Registered before running anything.
+
+- **Structures:** perp leverage L in {1, 2, 3} (share of capital earning funding: 50%, 67%, 75%) × costs {C0, C1}.
+  - C0: spot 0.11%, perp 0.06% per leg (taker + slippage), as before.
+  - C1: fees paid in BNB and the perp leg as a maker order. Spot 0.075% + 0.01% slippage; perp 0.018% (Binance
+    fee pages: spot 0.1% with 25% BNB discount; USDⓈ-M maker 0.02% with 10% BNB discount). The maker fill is
+    assumed, which is optimistic.
+- **Liquidation becomes a real loss**, checked on the hourly **mark price** high (last-price high where mark data
+  is missing): the margin is lost and the spot leg is sold at the next open.
+- **Step A, diagnostic:** the perfect-foresight oracle (top 3 monthly) for each structure. A structure "has room"
+  if the oracle beats the T-bill by at least 5 points over 2022..2026-06, with no liquidation and max drawdown
+  below 10%.
+- **Step B:** take the first structure with room in the order L1·C1, L2·C0, L2·C1, L3·C0, L3·C1 and run R1 under it
+  (1 variant). Phase 3 (NCM) then runs under that structure only, with the original success criterion.
+- **If no structure has room, funding carry is closed for good.**
+- Cash outside positions already earns the T-bill, so there is no extra "idle cash yield" lever.
+
 ## Done when
 
 - [ ] The criterion is met and the frozen test confirms it, or the failure is documented at the phase where it
