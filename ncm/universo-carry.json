@@ -1,0 +1,177 @@
+{
+ "regra": "*USDT com kline de futuros e de spot em 2020-12; 30 maiores por volume USDT dos futuros em 2020-12",
+ "candidatos": 79,
+ "simbolos": [
+  {
+   "simbolo": "BTCUSDT",
+   "volume_usdt_2020_12": 223539719868.3665
+  },
+  {
+   "simbolo": "ETHUSDT",
+   "volume_usdt_2020_12": 64928962217.673874
+  },
+  {
+   "simbolo": "XRPUSDT",
+   "volume_usdt_2020_12": 41591671078.38975
+  },
+  {
+   "simbolo": "LTCUSDT",
+   "volume_usdt_2020_12": 15522285910.22457
+  },
+  {
+   "simbolo": "LINKUSDT",
+   "volume_usdt_2020_12": 8532050039.25861
+  },
+  {
+   "simbolo": "BCHUSDT",
+   "volume_usdt_2020_12": 7045800099.26106
+  },
+  {
+   "simbolo": "YFIUSDT",
+   "volume_usdt_2020_12": 4493360473.0088
+  },
+  {
+   "simbolo": "SUSHIUSDT",
+   "volume_usdt_2020_12": 4479136084.5492
+  },
+  {
+   "simbolo": "XLMUSDT",
+   "volume_usdt_2020_12": 3512876374.0743
+  },
+  {
+   "simbolo": "ADAUSDT",
+   "volume_usdt_2020_12": 3329640325.84299
+  },
+  {
+   "simbolo": "GRTUSDT",
+   "volume_usdt_2020_12": 3296595705.75009
+  },
+  {
+   "simbolo": "EOSUSDT",
+   "volume_usdt_2020_12": 3224481413.1685
+  },
+  {
+   "simbolo": "BNBUSDT",
+   "volume_usdt_2020_12": 3011937375.7709103
+  },
+  {
+   "simbolo": "DOTUSDT",
+   "volume_usdt_2020_12": 2932214671.944
+  },
+  {
+   "simbolo": "UNIUSDT",
+   "volume_usdt_2020_12": 2053726058.8416
+  },
+  {
+   "simbolo": "ZILUSDT",
+   "volume_usdt_2020_12": 1907413376.13156
+  },
+  {
+   "simbolo": "AAVEUSDT",
+   "volume_usdt_2020_12": 1550379856.5444999
+  },
+  {
+   "simbolo": "EGLDUSDT",
+   "volume_usdt_2020_12": 1545022298.6403
+  },
+  {
+   "simbolo": "THETAUSDT",
+   "volume_usdt_2020_12": 1409356130.24743
+  },
+  {
+   "simbolo": "TRXUSDT",
+   "volume_usdt_2020_12": 1329846209.23283
+  },
+  {
+   "simbolo": "ETCUSDT",
+   "volume_usdt_2020_12": 1253822264.37702
+  },
+  {
+   "simbolo": "COMPUSDT",
+   "volume_usdt_2020_12": 1239865462.28234
+  },
+  {
+   "simbolo": "WAVESUSDT",
+   "volume_usdt_2020_12": 1144602551.70495
+  },
+  {
+   "simbolo": "FILUSDT",
+   "volume_usdt_2020_12": 1142482990.1323
+  },
+  {
+   "simbolo": "CRVUSDT",
+   "volume_usdt_2020_12": 1119806232.7264
+  },
+  {
+   "simbolo": "VETUSDT",
+   "volume_usdt_2020_12": 1022184247.187983
+  },
+  {
+   "simbolo": "YFIIUSDT",
+   "volume_usdt_2020_12": 990365263.3664
+  },
+  {
+   "simbolo": "XMRUSDT",
+   "volume_usdt_2020_12": 837810731.11769
+  },
+  {
+   "simbolo": "SNXUSDT",
+   "volume_usdt_2020_12": 823167881.147
+  },
+  {
+   "simbolo": "SXPUSDT",
+   "volume_usdt_2020_12": 811387447.81115
+  }
+ ],
+ "fora": [
+  "1INCHUSDT",
+  "MKRUSDT",
+  "BANDUSDT",
+  "XTZUSDT",
+  "ZECUSDT",
+  "ALGOUSDT",
+  "OMGUSDT",
+  "AVAXUSDT",
+  "DASHUSDT",
+  "KSMUSDT",
+  "ATOMUSDT",
+  "CVCUSDT",
+  "AXSUSDT",
+  "SOLUSDT",
+  "NEOUSDT",
+  "DOGEUSDT",
+  "RSRUSDT",
+  "BZRXUSDT",
+  "TRBUSDT",
+  "RUNEUSDT",
+  "BELUSDT",
+  "NEARUSDT",
+  "CTKUSDT",
+  "KAVAUSDT",
+  "RENUSDT",
+  "SRMUSDT",
+  "BALUSDT",
+  "SKLUSDT",
+  "ALPHAUSDT",
+  "ZENUSDT",
+  "ONTUSDT",
+  "IOTAUSDT",
+  "BATUSDT",
+  "OCEANUSDT",
+  "FLMUSDT",
+  "QTUMUSDT",
+  "RLCUSDT",
+  "KNCUSDT",
+  "IOSTUSDT",
+  "ICXUSDT",
+  "ZRXUSDT",
+  "TOMOUSDT",
+  "LRCUSDT",
+  "FTMUSDT",
+  "STORJUSDT",
+  "HNTUSDT",
+  "BLZUSDT",
+  "MATICUSDT",
+  "ENJUSDT"
+ ]
+}

@@ -6,6 +6,7 @@ a Binance publica ao lado. Depois confere se os klines de 1m de futuros cobrem t
     python3 -I ncm/dados_binance.py                       # BTCUSDT, 2026-02..2026-10, tudo
     python3 -I ncm/dados_binance.py --sem-aggtrades       # só klines + funding (rápido)
     python3 -I ncm/dados_binance.py --simbolo ETHUSDT
+    python3 -I ncm/dados_binance.py --simbolo ETHUSDT --intervalo 1h --sem-aggtrades
     python3 -I ncm/dados_binance.py --selftest
 """
 import argparse
@@ -149,6 +150,7 @@ def main() -> int:
     p.add_argument("--de", default="2026-02")
     p.add_argument("--ate", default="2026-10")
     p.add_argument("--sem-aggtrades", action="store_true")
+    p.add_argument("--intervalo", default="1m", help="klines: 1m (padrão) ou 1h; outro intervalo vai para <conjunto>_<intervalo>")
     p.add_argument("--selftest", action="store_true")
     a = p.parse_args()
     if a.selftest:
@@ -158,10 +160,14 @@ def main() -> int:
     for conjunto, (pasta, nome) in CONJUNTOS.items():
         if a.sem_aggtrades and conjunto == "futuros_aggtrades":
             continue
+        if "klines" in conjunto:
+            conjunto, pasta, nome = (x.replace("1m", a.intervalo) for x in (conjunto, pasta, nome))
         for mes in lista:
             n = nome.format(s=a.simbolo, m=mes)
             status = baixa_verificado(pasta.format(s=a.simbolo), n, RAW / conjunto / a.simbolo / n)
             print(f"{conjunto:18} {mes}: {status}", flush=True)
+    if a.intervalo != "1m":       # a conferência de buracos é por minuto; em 1h quem confere é o carregador
+        return 0
     print("klines 1m de futuros:")
     return 1 if confere_klines(a.simbolo, lista) else 0
 

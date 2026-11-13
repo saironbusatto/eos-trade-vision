@@ -69,3 +69,7 @@
 - Updated: Theory 1 Funding Carry (V5 funding>T-bill, final verdict, liquidation correction)
 
 ## [2026-11-09] update | Backtest Research Handoff 2026-11-09
+
+## [2026-11-12] update | Theory 3 Volatility-Managed Exposure
+
+## [2026-11-13] update | Funding Carry Phase 1–2 Rotation (plan stopped at phase 2)

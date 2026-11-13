@@ -21,6 +21,8 @@ Baseline architecture, contracts, runtime modules, strategy evidence and operati
 | [NCM Exp 08 Pipeline Audit](project-system/ncm-exp-08-pipeline-audit.md) | Pipeline audit with sources: no defect; volatility predictable, direction not; why the rules fail. | 2026-11-08 |
 | [Backtest Step 0 History Data](project-system/backtest-step-0-history.md) | BTCUSDT 2020-01..2026-10 downloaded and checked (klines spot/futures, funding); start of backtest research. | 2026-11-08 |
 | [Theory 1 Funding Carry](project-system/theory-1-funding-carry.md) | Funding carry BTC/ETH/SOL 2020–2026H1, closed: mechanism confirmed, but loses to the T-bill since 2022 in every variant (incl. funding>T-bill rule); SOL −27% in FTX crash. | 2026-11-08 |
+| [Theory 3 Volatility-Managed Exposure](project-system/theory-3-volatility-managed.md) | Vol-scaled long BTC/ETH 2020–26H1: no variant beats buy & hold in both halves; H1 rejected. | 2026-11-12 |
+| [Funding Carry Phase 1–2 Rotation](project-system/funding-carry-phase-1-2-rotation.md) | 30-symbol funding rotation: loses to the T-bill since 2022; even a perfect-foresight oracle does not beat it; plan stopped at phase 2. | 2026-11-13 |
 | [NCM BTC Closing](project-system/ncm-btc-closing.md) | Decision 08/11: BTC NCM work stopped after Exp 00–07; frozen test kept closed. | 2026-11-08 |
 | [Candidate Ridge BTC](project-system/candidate-ridge-btc.md) | Frozen ridge rule for the task 8 test (sha256 5b5e7cb1…); reproduces June from raw photos. PROMISING. | 2026-11-07 |
 | [Project State and Open Items](project-system/project-state-and-open-items.md) | Timeline, uncommitted work, conflicts and next actions — start here when resuming. | 2026-11-04 |
