@@ -32,13 +32,13 @@ much in each, how much in cash. It must beat the dollar rate after real costs.
 - [x] 3. Phase 2, no model: hold the 3 symbols with the highest recent funding, monthly switch, cash at the T-bill,
       weight cap per symbol, forced exit when the funding interval shortens or a rate hits the floor.
       → Verify: yearly table vs T-bill. **Stop here if it does not beat the T-bill after costs.**
-- [ ] 4. **Not run (stop rule fired).** Phase 3, NCM: inputs are funding history, spot/perp basis, volatility and the T-bill; output is the
+- [x] 4. **Run under option 1 (L2·C0); criterion not met.** Phase 3, NCM: inputs are funding history, spot/perp basis, volatility and the T-bill; output is the
       predicted net carry per symbol over the holding horizon; weights follow from it. Walk-forward by year (fit to
       year N, decide year N+1).
       → Verify: the success criterion above.
 - [ ] 5. If it passes: freeze the candidate and open the jul–out 2026 test once (`split.abre_teste`, with the
       user's explicit ok).
-- [ ] 6. A 13-item report per phase in `wiki/project-system/`.
+- [x] 6. A 13-item report per phase in `wiki/project-system/`.
 
 ## Status 2026-11-13: stopped at task 3
 
@@ -88,9 +88,17 @@ Registered before running anything.
 - Success criterion unchanged: beats the T-bill and R1 (L2·C0) in at least 4 of the 5 years, max drawdown below 10%,
   Deflated Sharpe above 0.95.
 
+## Final status 2026-11-13: criterion not met
+
+- Under L2·C0 since 2022: T-bill +19.9%, R1 +16.2%, M1 ridge +21.8% (2 of 5 years won), M2 NCM network +19.7%
+  (1 of 5), oracle +25.1%.
+- 2025 and 2026 are lost even by the oracle, so "4 of 5 years" is out of reach in this universe.
+- Task 4 is done and failed; task 5 is not run and the frozen test stays closed. 7 of 20 variants used.
+- Report: `wiki/project-system/funding-carry-phase-3-model.md`.
+
 ## Done when
 
-- [ ] The criterion is met and the frozen test confirms it, or the failure is documented at the phase where it
+- [x] The criterion is met and the frozen test confirms it, or the failure is documented at the phase where it
       stopped.
 
 ## Notes
