@@ -28,13 +28,15 @@ import agregados as ag  # noqa: E402
 import carry as c  # noqa: E402
 from dados_binance import RAW, meses  # noqa: E402
 
-MESES = meses("2020-11", "2026-06")
+MESES = meses("2020-01", "2026-06")     # 2020 só alimenta o treino da fase 3; a operação começa em INICIO
 INICIO = "2021-01-01"
 JANELA_H = 30 * 24
 MIN_EVENTOS = 60               # ~20 dias de funding de 8 h dentro da janela
 SAIDA_24H = -0.003
 PREENCHE_H = 24                # buraco maior que isso = símbolo indisponível
 SAIDA = Path.home() / ".local/share/eos-ncm/diag-kl/metricas-rotacao.json"
+C0 = (c.CUSTO_SPOT, c.CUSTO_PERP)        # taker + slippage nas duas pernas
+C1 = (0.00075 + 0.0001, 0.00018)         # taxas em BNB; perpétuo como maker (preenchimento suposto)
 
 
 @dataclass(frozen=True)
@@ -43,6 +45,7 @@ class Regra:
     k: int
     semanal: bool = False
     filtro: bool = True          # exige funding anualizado > T-bill
+    alav: float = 1.0            # alavancagem do perpétuo: fração do capital no spot = alav/(1+alav)
     oraculo: bool = False        # DIAGNÓSTICO, não é estratégia: ordena pelo funding dos 30 dias SEGUINTES
 
 
@@ -73,6 +76,9 @@ def carrega(simbolos: list[str]) -> tuple[np.ndarray, np.ndarray, np.ndarray, np
     for j, s in enumerate(simbolos):
         p, sp = _horas("futuros_klines_1h", s, grade), _horas("spot_klines_1h", s, grade)
         S[:, j], P[:, j], PH[:, j] = sp["abertura"], p["abertura"], p["maxima"]
+        if (RAW / "futuros_markprice_1h" / s).is_dir():
+            mk = _horas("futuros_markprice_1h", s, grade)["maxima"].to_numpy()
+            PH[:, j] = np.where(np.isfinite(mk), mk, PH[:, j])
         zs = [RAW / "futuros_funding" / s / f"{s}-fundingRate-{m}.zip" for m in MESES]
         f = pd.concat([ag.funding(z) for z in zs if z.exists()])
         f = f.groupby(np.round(f.index / c.HORA_MS).astype(np.int64)).sum()
@@ -81,11 +87,13 @@ def carrega(simbolos: list[str]) -> tuple[np.ndarray, np.ndarray, np.ndarray, np
 
 
 def simula(r: Regra, S: np.ndarray, P: np.ndarray, PH: np.ndarray, F: np.ndarray, rf_h: np.ndarray,
-           decide: np.ndarray, inicio: int) -> dict:
+           decide: np.ndarray, inicio: int, custo: tuple[float, float] = C0,
+           nota_ext: np.ndarray | None = None) -> dict:
+    """PH = máxima horária do mark price (ou do último preço onde não há mark). Liquidação é perda real."""
     T, N = S.shape
+    alvo = r.alav / (1 + r.alav)
     cs = np.cumsum(np.nan_to_num(F), 0)
     cn = np.cumsum(np.isfinite(F), 0)
-    custo = c.CUSTO_SPOT, c.CUSTO_PERP
     caixa, q, m = 1.0, np.zeros(N), np.zeros(N)
     us, up = np.zeros(N), np.zeros(N)                      # último preço válido de cada posição
     sair: set[int] = set()
@@ -103,7 +111,7 @@ def simula(r: Regra, S: np.ndarray, P: np.ndarray, PH: np.ndarray, F: np.ndarray
 
     def abre(j: int, tamanho: float, i: int) -> None:
         nonlocal caixa
-        q[j] = tamanho * 0.5 / S[i, j]
+        q[j] = tamanho * alvo / S[i, j]
         gasto = q[j] * (S[i, j] * custo[0] + P[i, j] * custo[1])
         m[j] = tamanho - q[j] * S[i, j] - gasto
         us[j], up[j] = S[i, j], P[i, j]
@@ -118,9 +126,14 @@ def simula(r: Regra, S: np.ndarray, P: np.ndarray, PH: np.ndarray, F: np.ndarray
                 cont["deslistados"] += 1
                 fecha(j)
                 continue
-            # ponytail: máxima do último preço, mais severa que o mark price que a Binance usa (ver carry.py)
             if m[j] - q[j] * max(PH[i - 1, j] - up[j], 0) < c.MANUTENCAO * q[j] * PH[i - 1, j]:
-                cont["liquidacoes"] += 1
+                cont["liquidacoes"] += 1          # perde a margem; vende o spot na abertura seguinte
+                gasto = q[j] * S[i, j] * custo[0]
+                caixa += q[j] * S[i, j] - gasto
+                cont["custos"] += gasto
+                q[j] = m[j] = 0.0
+                sair.discard(j)
+                continue
             m[j] += q[j] * (up[j] - P[i, j])
             us[j], up[j] = S[i, j], P[i, j]
             if math.isfinite(F[i, j]):
@@ -131,19 +144,21 @@ def simula(r: Regra, S: np.ndarray, P: np.ndarray, PH: np.ndarray, F: np.ndarray
             elif cs[i, j] - cs[i - 24, j] < SAIDA_24H:
                 sair.add(j)
                 cont["saidas_forcadas"] += 1
-            elif not 0.5 <= m[j] / (q[j] * P[i, j]) <= 2:
+            elif not 0.5 / r.alav <= m[j] / (q[j] * P[i, j]) <= 2 / r.alav:
                 e = q[j] * S[i, j] + m[j]
-                novo = e * 0.5 / S[i, j]
+                novo = e * alvo / S[i, j]
                 gasto = abs(novo - q[j]) * (S[i, j] * custo[0] + P[i, j] * custo[1])
                 q[j], m[j] = novo, e - novo * S[i, j] - gasto
                 cont["custos"] += gasto
                 cont["rebalanceios"] += 1
         if decide[i]:
             nota = (cs[i - 1] - cs[i - 1 - JANELA_H]) / 30 * 365          # funding anualizado, só o já liquidado
+            if nota_ext is not None:                      # previsão de um modelo (fase 3), em taxa anual
+                nota = nota_ext[i]
             if r.oraculo:
                 passo = 7 * 24 if r.semanal else JANELA_H
                 nota = (cs[min(i - 1 + passo, T - 1)] - cs[i - 1]) / (passo / 24) * 365
-            ok = np.isfinite(S[i]) & np.isfinite(P[i]) & (cn[i - 1] - cn[i - 1 - JANELA_H] >= MIN_EVENTOS)
+            ok = np.isfinite(nota) & np.isfinite(S[i]) & np.isfinite(P[i]) & (cn[i - 1] - cn[i - 1 - JANELA_H] >= MIN_EVENTOS)
             if r.filtro:
                 ok &= nota > rf_h[i] * 24 * 360
             escolhidos = [int(j) for j in np.argsort(-np.where(ok, nota, -np.inf))[:r.k] if ok[j]]
@@ -167,6 +182,42 @@ def marcas(hora: np.ndarray, semanal: bool) -> np.ndarray:
     return np.asarray((d.hour == 0) & ((d.dayofweek == 0) if semanal else (d.day == 1)))
 
 
+def opcao1(hora, S, P, PH, F, rf_h, rf, inicio) -> int:
+    """Passo A da opção 1: teto do oráculo por estrutura; passo B: R1 na primeira estrutura com folga."""
+    h = hora[inicio:]
+    pos = pd.to_datetime(h * c.HORA_MS, unit="ms").year.to_numpy() >= 2022
+    dec = marcas(hora, False)
+    out, com_folga = {}, None
+    for nome_c, custo in (("C0", C0), ("C1", C1)):
+        for alav in (1.0, 2.0, 3.0):
+            res = simula(Regra("oráculo", 3, alav=alav, oraculo=True), S, P, PH, F, rf_h, dec, inicio, custo)
+            d = c.metricas(res["patrimonio"][pos], h[pos], rf)
+            folga = d["retorno_total"] - d["tbill"]
+            ok = folga >= 0.05 and res["liquidacoes"] == 0 and d["max_dd"] > -0.10
+            out[f"L{alav:.0f}-{nome_c}"] = {"oraculo_desde_2022": d["retorno_total"], "tbill": d["tbill"], "folga": folga,
+                                         "max_dd": d["max_dd"], "liquidacoes": res["liquidacoes"],
+                                         "custos": res["custos"], "tem_folga": ok}
+            print(f"L{alav:.0f}-{nome_c}: oráculo desde 2022 {d['retorno_total']:+.1%}  T-bill {d['tbill']:+.1%}  folga "
+                  f"{folga:+.1%}  maxDD {d['max_dd']:.1%}  liquidações {res['liquidacoes']}  rebal {res['rebalanceios']}  "
+                  f"custos {res['custos']:.3f}  -> {'TEM FOLGA' if ok else 'sem folga'}", flush=True)
+    ordem = ["L1-C1", "L2-C0", "L2-C1", "L3-C0", "L3-C1"]
+    com_folga = next((k for k in ordem if out[k]["tem_folga"]), None)
+    print(f"\nprimeira estrutura com folga: {com_folga}")
+    if com_folga:
+        alav, custo = float(com_folga[1]), (C0 if com_folga.endswith("C0") else C1)
+        res = simula(Regra("R1", 3, alav=alav), S, P, PH, F, rf_h, dec, inicio, custo)
+        pat = res.pop("patrimonio")
+        ano = pd.to_datetime(h * c.HORA_MS, unit="ms").year.to_numpy()
+        d, t = c.metricas(pat[pos], h[pos], rf), c.metricas(pat, h, rf)
+        print(f"R1 em {com_folga}: total {t['retorno_total']:+.1%}  desde 2022 {d['retorno_total']:+.1%} (T-bill "
+              f"{d['tbill']:+.1%})  maxDD {t['max_dd']:.1%}  liquidações {res['liquidacoes']}  custos {res['custos']:.3f}")
+        anos = {int(a): c.metricas(pat[ano == a], h[ano == a], rf) for a in np.unique(ano)}
+        print("  " + "  ".join(f"{a}: {x['retorno_total']:+.1%} vs tb {x['tbill']:+.1%}" for a, x in anos.items()))
+        out["R1"] = {"estrutura": com_folga, "total": t, "desde_2022": d, "anos": anos, **res}
+    SAIDA.with_name("metricas-rotacao-opcao1.json").write_text(json.dumps(out, indent=1))
+    return 0
+
+
 def main() -> int:
     simbolos = [e["simbolo"] for e in json.loads((AQUI / "universo-carry.json").read_text())["simbolos"]]
     hora, S, P, PH, F = carrega(simbolos)
@@ -177,6 +228,8 @@ def main() -> int:
     disp = np.isfinite(S) & np.isfinite(P)
     print(f"{len(simbolos)} símbolos, {len(hora) - inicio} horas desde {INICIO}; disponíveis no início "
           f"{disp[inicio].sum()}, no fim {disp[-1].sum()}", flush=True)
+    if "--opcao1" in sys.argv:
+        return opcao1(hora, S, P, PH, F, rf_h, rf, inicio)
     h, ano = hora[inicio:], pd.to_datetime(hora[inicio:] * c.HORA_MS, unit="ms").year.to_numpy()
     out = {}
     for r in REGRAS:
@@ -227,6 +280,14 @@ def selftest() -> None:
     sobe[:, 1] = np.linspace(100, 400, T)                 # o preço quadruplica: delta-neutro, rebalanceia
     r = simula(Regra("t", 1), sobe, sobe, sobe, F, zero, decide, ini)
     assert r["rebalanceios"] >= 1 and r["liquidacoes"] == 0 and abs(r["patrimonio"][-1] - esperado) < 0.01
+    r3 = simula(Regra("t", 1, alav=3.0), S, S, S, F, zero, decide, ini)       # 3x: 75% do capital recebe funding
+    esp3 = 1 - 0.75 * (c.CUSTO_SPOT + c.CUSTO_PERP) + 0.75 * 0.0003 * eventos
+    assert abs(r3["patrimonio"][-1] - esp3) < 1e-6, (r3["patrimonio"][-1], esp3)
+    pico = S.copy()
+    pico[ini + 50, 1] = 150.0                             # máxima +50% numa hora: liquida a 3x, não a 1x
+    assert simula(Regra("t", 1), S, S, pico, F, zero, decide, ini)["liquidacoes"] == 0
+    rl = simula(Regra("t", 1, alav=3.0), S, S, pico, F, zero, decide, ini)
+    assert rl["liquidacoes"] == 1 and rl["patrimonio"][-1] < 0.78   # perdeu a margem (25% do capital)
     print("selftest ok")
 
 

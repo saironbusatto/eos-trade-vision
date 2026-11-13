@@ -67,6 +67,27 @@ Registered before running anything.
 - **If no structure has room, funding carry is closed for good.**
 - Cash outside positions already earns the T-bill, so there is no extra "idle cash yield" lever.
 
+## Option 1 result (2026-11-13) and phase 3 design, registered before training
+
+- Step A: oracle since 2022 vs T-bill +19.9%: L1·C0 +19.0%, L1·C1 +22.1%, L2·C0 +25.1%, L2·C1 +29.9%, L3·C0 +27.9%,
+  L3·C1 +33.7%. No liquidation on mark price in any. First structure with room: **L2·C0**.
+- Step B: R1 under L2·C0 = +16.2% since 2022, below the T-bill. Variants used so far: 5 of 20.
+- **Phase 3 runs under L2·C0 only.** The portfolio rule is R1's (top 3 monthly, 1/3 each, forced exit); only the
+  ranking changes: the model's predicted funding for the next 30 days replaces the last-30-day mean, and a symbol is
+  taken only if the prediction exceeds the T-bill.
+- Samples: one per symbol per day, 2020..2026-06; target = funding summed over the next 30 days.
+- Features, all known at 00 UTC of the decision day: mean funding over 1/3/7/14/30/90 days, its 30-day standard
+  deviation and share of negative days, spot/perp basis (now and 7-day mean), volatility and return over 7 and 30
+  days, T-bill, the symbol's rank and gap to the universe's mean funding, and the universe's 7-day mean funding.
+- Walk-forward: for each test year Y in 2022..2026, fit only on samples whose 30-day target ends before 1 Jan Y.
+- Two model variants (total 7 of 20):
+  - M1: ridge, λ = 10, fixed.
+  - M2: the NCM-style value network, sized for ~60k samples: a transformer (2 layers, 64 dims, 4 heads) over the
+    last 90 daily tokens (funding, basis, return, |return|) plus the context features; Huber loss; the checkpoint is
+    chosen on the last 90 days of the fit window; prediction = mean of seeds 0, 1, 2.
+- Success criterion unchanged: beats the T-bill and R1 (L2·C0) in at least 4 of the 5 years, max drawdown below 10%,
+  Deflated Sharpe above 0.95.
+
 ## Done when
 
 - [ ] The criterion is met and the frozen test confirms it, or the failure is documented at the phase where it
