@@ -124,6 +124,12 @@ Registered before running. Structure L2·C0, same simulator, data to 2026-06.
 - Only 3 turn-ons since 2022, so the finding is PROMISING at most. 10 of 20 variants used.
 - Report: `wiki/project-system/funding-carry-regime.md`.
 
+## Paper monitor (2026-11-14)
+
+- `ncm/monitor_carry.py` logs the regime decision every Monday (systemd user timer `eos-carry-monitor.timer`).
+- It reads data from 2026-11-01 on; first signal 2026-12-07. No orders, no money.
+- Details in `wiki/project-system/funding-carry-regime.md`.
+
 ## Done when
 
 - [x] The criterion is met and the frozen test confirms it, or the failure is documented at the phase where it

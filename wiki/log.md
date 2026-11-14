@@ -78,3 +78,5 @@
 - Updated: Funding Carry Phase 1–2 Rotation
 
 ## [2026-11-13] update | Funding Carry Regime (option 2, criterion missed by 0.1 point)
+
+## [2026-11-14] update | Funding Carry Regime (paper monitor added)

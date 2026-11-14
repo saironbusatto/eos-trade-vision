@@ -97,4 +97,22 @@ funding is below the dollar rate. **The registered criterion was missed by 0.1 p
         nothing and accumulates out-of-sample evidence.
     - Nothing goes live with money on this result.
 
+## Paper monitor (2026-11-14)
+
+The user chose the paper monitor. It places no orders; it logs the weekly decision in real time.
+
+- Script: `ncm/monitor_carry.py` (selftest for the Monday date, the 30-day window, the hysteresis and the top 3).
+- Rule: the same as `rotacao.py --opcao2`. It logs the state (ON/OFF), the signal, and what G1 and G2 would hold.
+- Sources: Binance public API (funding history, spot pairs) and FRED DTB3.
+- Log: `~/.local/share/eos-ncm/monitor/carry-regime.csv`, one row per Monday.
+- Schedule: systemd user timer `eos-carry-monitor.timer`, Mondays 00:10 UTC (Sunday 21:10 in São Paulo),
+  `Persistent=true`. If the PC was off, missed Mondays are logged in order on the next run, and `registrado_em`
+  shows the delay. A desktop notification fires when the state changes.
+  - Disable with `systemctl --user disable --now eos-carry-monitor.timer`.
+- **It only reads funding from 2026-11-01 on,** so the frozen test (jul–out 2026) stays closed. The first signal is
+  on Monday 2026-12-07; until then the rows say `AQUECENDO`.
+- The money result is not computed by the monitor. It is computed later by the backtest on the Binance archives,
+  which also applies the hourly forced exit. The log proves which decision was made at the time.
+- Review after 10 turn-ons, or after 12 months if fewer: compare the logged decisions with the backtest.
+
 See also: [[Funding Carry Phase 3 Model]], [[Funding Carry Phase 1–2 Rotation]], [[Theory 1 Funding Carry]].
