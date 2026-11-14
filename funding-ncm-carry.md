@@ -117,6 +117,13 @@ Registered before running. Structure L2·C0, same simulator, data to 2026-06.
 - With fewer than 10 separate ON episodes, a pass is classified PROMISING at most, not SUPPORTED.
 - 2021 is reported as context and does not count for the criterion.
 
+## Option 2 result (2026-11-13): criterion missed by 0.1 point
+
+- Since 2022 (T-bill +19.9%): G1 +24.8% (margin +4.9, threshold +5.0), G2 +24.0%, G3 +23.1%. Worst year −0.2 point
+  vs the T-bill; max drawdown 0.3%. G3 had 5 liquidations.
+- Only 3 turn-ons since 2022, so the finding is PROMISING at most. 10 of 20 variants used.
+- Report: `wiki/project-system/funding-carry-regime.md`.
+
 ## Done when
 
 - [x] The criterion is met and the frozen test confirms it, or the failure is documented at the phase where it

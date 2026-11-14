@@ -76,3 +76,5 @@
 
 ## [2026-11-13] update | Funding Carry Phase 3 Model (criterion not met)
 - Updated: Funding Carry Phase 1–2 Rotation
+
+## [2026-11-13] update | Funding Carry Regime (option 2, criterion missed by 0.1 point)

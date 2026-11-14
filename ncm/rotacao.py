@@ -33,6 +33,7 @@ INICIO = "2021-01-01"
 JANELA_H = 30 * 24
 MIN_EVENTOS = 60               # ~20 dias de funding de 8 h dentro da janela
 SAIDA_24H = -0.003
+REGIME_LIGA = 0.02            # liga com 2 pontos acima do T-bill; desliga abaixo de 0
 PREENCHE_H = 24                # buraco maior que isso = símbolo indisponível
 SAIDA = Path.home() / ".local/share/eos-ncm/diag-kl/metricas-rotacao.json"
 C0 = (c.CUSTO_SPOT, c.CUSTO_PERP)        # taker + slippage nas duas pernas
@@ -47,6 +48,8 @@ class Regra:
     filtro: bool = True          # exige funding anualizado > T-bill
     alav: float = 1.0            # alavancagem do perpétuo: fração do capital no spot = alav/(1+alav)
     oraculo: bool = False        # DIAGNÓSTICO, não é estratégia: ordena pelo funding dos 30 dias SEGUINTES
+    regime: bool = False         # opção 2: só opera com o funding médio do universo acima do T-bill
+    so: tuple[int, ...] = ()     # restringe a carteira a estes índices do universo (vazio = todos)
 
 
 REGRAS = (
@@ -88,7 +91,7 @@ def carrega(simbolos: list[str]) -> tuple[np.ndarray, np.ndarray, np.ndarray, np
 
 def simula(r: Regra, S: np.ndarray, P: np.ndarray, PH: np.ndarray, F: np.ndarray, rf_h: np.ndarray,
            decide: np.ndarray, inicio: int, custo: tuple[float, float] = C0,
-           nota_ext: np.ndarray | None = None) -> dict:
+           nota_ext: np.ndarray | None = None, reordena: np.ndarray | None = None) -> dict:
     """PH = máxima horária do mark price (ou do último preço onde não há mark). Liquidação é perda real."""
     T, N = S.shape
     alvo = r.alav / (1 + r.alav)
@@ -97,9 +100,10 @@ def simula(r: Regra, S: np.ndarray, P: np.ndarray, PH: np.ndarray, F: np.ndarray
     caixa, q, m = 1.0, np.zeros(N), np.zeros(N)
     us, up = np.zeros(N), np.zeros(N)                      # último preço válido de cada posição
     sair: set[int] = set()
+    ligado = False
     pat = np.ones(T)
     cont = {"funding": 0.0, "custos": 0.0, "entradas": 0, "saidas_forcadas": 0, "deslistados": 0,
-            "rebalanceios": 0, "liquidacoes": 0, "soma_posicoes": 0}
+            "rebalanceios": 0, "liquidacoes": 0, "soma_posicoes": 0, "ligacoes": 0, "horas_ligado": 0}
 
     def fecha(j: int) -> None:
         nonlocal caixa
@@ -159,9 +163,21 @@ def simula(r: Regra, S: np.ndarray, P: np.ndarray, PH: np.ndarray, F: np.ndarray
                 passo = 7 * 24 if r.semanal else JANELA_H
                 nota = (cs[min(i - 1 + passo, T - 1)] - cs[i - 1]) / (passo / 24) * 365
             ok = np.isfinite(nota) & np.isfinite(S[i]) & np.isfinite(P[i]) & (cn[i - 1] - cn[i - 1 - JANELA_H] >= MIN_EVENTOS)
+            manter = False
+            if r.regime:                                  # sinal do universo inteiro, antes de qualquer filtro
+                sinal = float(np.mean(nota[ok])) * alvo - rf_h[i] * 24 * 360 if ok.any() else -1.0
+                antes, ligado = ligado, (sinal > REGIME_LIGA if not ligado else sinal >= 0)
+                cont["ligacoes"] += int(ligado and not antes)
+                if not ligado:
+                    ok[:] = False                         # fecha tudo e fica no caixa
+                manter = ligado and antes and not reordena[i]
+            if r.so:
+                ok &= np.isin(np.arange(N), r.so)
             if r.filtro:
                 ok &= nota > rf_h[i] * 24 * 360
             escolhidos = [int(j) for j in np.argsort(-np.where(ok, nota, -np.inf))[:r.k] if ok[j]]
+            if manter:
+                escolhidos = [int(j) for j in np.flatnonzero(q)]
             for j in np.flatnonzero(q):
                 if j not in escolhidos:
                     fecha(j)
@@ -172,6 +188,7 @@ def simula(r: Regra, S: np.ndarray, P: np.ndarray, PH: np.ndarray, F: np.ndarray
                 for j in novos:
                     abre(j, tamanho, i)
         cont["soma_posicoes"] += int(np.count_nonzero(q))
+        cont["horas_ligado"] += int(ligado)
         pat[i] = caixa + float(np.sum(q * us + m))
     cont["posicoes_medias"] = cont.pop("soma_posicoes") / (T - inicio)
     return {"patrimonio": pat[inicio:], **cont}
@@ -218,6 +235,41 @@ def opcao1(hora, S, P, PH, F, rf_h, rf, inicio) -> int:
     return 0
 
 
+def opcao2(simbolos, hora, S, P, PH, F, rf_h, rf, inicio) -> int:
+    """Carry como estratégia de regime (L2·C0): G1 top 3, G2 só BTC e ETH, G3 todos iguais."""
+    d = pd.to_datetime(hora * c.HORA_MS, unit="ms")
+    semanal = np.asarray((d.hour == 0) & (d.dayofweek == 0))
+    reordena = semanal & np.asarray(d.day <= 7)
+    h, ano = hora[inicio:], d[inicio:].year.to_numpy()
+    pos = ano >= 2022
+    maiores = tuple(simbolos.index(x) for x in ("BTCUSDT", "ETHUSDT"))
+    regras = (Regra("G1 regime top3", 3, alav=2.0, regime=True),
+              Regra("G2 regime BTC+ETH", 2, alav=2.0, regime=True, filtro=False, so=maiores),
+              Regra("G3 regime todos", 30, alav=2.0, regime=True, filtro=False))
+    out = {}
+    for r in regras:
+        res = simula(r, S, P, PH, F, rf_h, semanal, inicio, C0, None, reordena)
+        pat = res.pop("patrimonio")
+        out[r.nome] = {"total": c.metricas(pat, h, rf), "desde_2022": c.metricas(pat[pos], h[pos], rf),
+                       "anos": {int(a): c.metricas(pat[ano == a], h[ano == a], rf) for a in np.unique(ano)}, **res}
+    srs = [o["desde_2022"]["sharpe_excesso"] / np.sqrt(365) for o in out.values()]
+    for (nome, o), sr in zip(out.items(), srs):
+        dd = o["desde_2022"]
+        dd["dsr_excesso"] = c.dsr(sr, srs, dd["_n"], dd["_assim"], dd["_curt"])
+        folga = dd["retorno_total"] - dd["tbill"]
+        pior = min(o["anos"][a]["retorno_total"] - o["anos"][a]["tbill"] for a in o["anos"] if a >= 2022)
+        o["passa"] = bool(folga >= 0.05 and pior >= -0.005 and dd["max_dd"] > -0.10 and dd["dsr_excesso"] > 0.95)
+        print(f"\n{nome}: desde 2022 {dd['retorno_total']:+.1%} (T-bill {dd['tbill']:+.1%}, folga {folga:+.1%})  pior ano "
+              f"vs T-bill {pior:+.1%}  maxDD {dd['max_dd']:.1%}  DSR-excesso {dd['dsr_excesso']:.2f}  -> "
+              f"{'PASSA' if o['passa'] else 'NÃO PASSA'}")
+        print(f"  ligou {o['ligacoes']} vezes desde 2021, ligado {o['horas_ligado'] / len(h):.0%} do tempo; entradas "
+              f"{o['entradas']}  custos {o['custos']:.3f}  saídas forçadas {o['saidas_forcadas']}  liquidações "
+              f"{o['liquidacoes']}")
+        print("  " + "  ".join(f"{a}: {x['retorno_total']:+.1%} vs tb {x['tbill']:+.1%}" for a, x in o["anos"].items()))
+    SAIDA.with_name("metricas-rotacao-opcao2.json").write_text(json.dumps(out, indent=1))
+    return 0
+
+
 def main() -> int:
     simbolos = [e["simbolo"] for e in json.loads((AQUI / "universo-carry.json").read_text())["simbolos"]]
     hora, S, P, PH, F = carrega(simbolos)
@@ -228,6 +280,8 @@ def main() -> int:
     disp = np.isfinite(S) & np.isfinite(P)
     print(f"{len(simbolos)} símbolos, {len(hora) - inicio} horas desde {INICIO}; disponíveis no início "
           f"{disp[inicio].sum()}, no fim {disp[-1].sum()}", flush=True)
+    if "--opcao2" in sys.argv:
+        return opcao2(simbolos, hora, S, P, PH, F, rf_h, rf, inicio)
     if "--opcao1" in sys.argv:
         return opcao1(hora, S, P, PH, F, rf_h, rf, inicio)
     h, ano = hora[inicio:], pd.to_datetime(hora[inicio:] * c.HORA_MS, unit="ms").year.to_numpy()
@@ -288,6 +342,14 @@ def selftest() -> None:
     assert simula(Regra("t", 1), S, S, pico, F, zero, decide, ini)["liquidacoes"] == 0
     rl = simula(Regra("t", 1, alav=3.0), S, S, pico, F, zero, decide, ini)
     assert rl["liquidacoes"] == 1 and rl["patrimonio"][-1] < 0.78   # perdeu a margem (25% do capital)
+    Fr = np.full((T, 3), np.nan)                          # regime: funding alto só na 1ª metade do período operado
+    Fr[8::8] = -0.00001
+    Fr[8:ini + 24 * 40:8] = 0.0003
+    toda = np.zeros(T, bool)
+    toda[ini::24 * 7] = True
+    rg = simula(Regra("t", 3, alav=2.0, regime=True, filtro=False), S, S, S, Fr, zero, toda, ini, C0, None, toda)
+    assert rg["ligacoes"] == 1 and 0.3 < rg["horas_ligado"] / (T - ini) < 0.9 and rg["entradas"] == 3
+    assert rg["patrimonio"][-1] == rg["patrimonio"][-24 * 7]           # desligado: caixa parado (juros 0)
     print("selftest ok")
 
 

@@ -24,6 +24,7 @@ Baseline architecture, contracts, runtime modules, strategy evidence and operati
 | [Theory 3 Volatility-Managed Exposure](project-system/theory-3-volatility-managed.md) | Vol-scaled long BTC/ETH 2020–26H1: no variant beats buy & hold in both halves; H1 rejected. | 2026-11-12 |
 | [Funding Carry Phase 1–2 Rotation](project-system/funding-carry-phase-1-2-rotation.md) | 30-symbol funding rotation: loses to the T-bill since 2022; even a perfect-foresight oracle does not beat it; plan stopped at phase 2. | 2026-11-13 |
 | [Funding Carry Phase 3 Model](project-system/funding-carry-phase-3-model.md) | Option 1 (2x perp) + ridge and NCM network deciding the rotation: criterion not met (2 of 5 and 1 of 5 years); 2025–26 lost even by the oracle. | 2026-11-13 |
+| [Funding Carry Regime](project-system/funding-carry-regime.md) | Carry only while universe funding beats the T-bill: +24.8% vs +19.9% since 2022, no bad year, but 0.1 point short of the registered bar and only 3 turn-ons. | 2026-11-13 |
 | [NCM BTC Closing](project-system/ncm-btc-closing.md) | Decision 08/11: BTC NCM work stopped after Exp 00–07; frozen test kept closed. | 2026-11-08 |
 | [Candidate Ridge BTC](project-system/candidate-ridge-btc.md) | Frozen ridge rule for the task 8 test (sha256 5b5e7cb1…); reproduces June from raw photos. PROMISING. | 2026-11-07 |
 | [Project State and Open Items](project-system/project-state-and-open-items.md) | Timeline, uncommitted work, conflicts and next actions — start here when resuming. | 2026-11-04 |
