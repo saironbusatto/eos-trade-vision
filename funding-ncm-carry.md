@@ -96,6 +96,27 @@ Registered before running anything.
 - Task 4 is done and failed; task 5 is not run and the frozen test stays closed. 7 of 20 variants used.
 - Report: `wiki/project-system/funding-carry-phase-3-model.md`.
 
+## Option 2 (user's choice, 2026-11-13): carry as a regime strategy
+
+Registered before running. Structure L2·C0, same simulator, data to 2026-06.
+
+- **Regime signal,** checked every Monday 00 UTC: the universe's mean funding of the last 30 days (annualized),
+  times the share of capital that earns it (2/3 at 2x), minus the T-bill.
+  - Turn ON when it is above +2 percentage points; turn OFF when it is below 0.
+  - OFF: everything in cash at the T-bill. ON: positions are re-ranked on the turn-on day and on the first Monday
+    of each month. The forced exit stays.
+- **Variants (3; total 10 of 20):**
+  - G1: top 3 by last-30-day funding, each only if above the T-bill.
+  - G2: BTC and ETH only, half each.
+  - G3: all available symbols, equal weights.
+- **Criterion, new,** because an OFF strategy earns the T-bill and cannot beat it in OFF years. Over 2022..2026-06:
+  - total at least 5 points above the T-bill;
+  - no year more than 0.5 point below the T-bill;
+  - max drawdown below 10%;
+  - Deflated Sharpe of the excess return above 0.95.
+- With fewer than 10 separate ON episodes, a pass is classified PROMISING at most, not SUPPORTED.
+- 2021 is reported as context and does not count for the criterion.
+
 ## Done when
 
 - [x] The criterion is met and the frozen test confirms it, or the failure is documented at the phase where it
